@@ -5,15 +5,6 @@
 [functions]
   node_bundler = "esbuild"
 
-[functions."cron-timekeeping"]
-  schedule = "* * * * *"
-
-[functions."cron-daily-report"]
-  schedule = "5 1 * * *"
-
-[functions."cron-repeated-issue-report"]
-  schedule = "15 1 * * *"
-
 [[redirects]]
   from = "/api/web/activity"
   to = "/.netlify/functions/web-activity"

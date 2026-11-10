@@ -1,12 +1,3 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/daily-report",
-      "schedule": "5 1 * * *"
-    },
-    {
-      "path": "/api/cron/repeated-issue-report",
-      "schedule": "15 1 * * *"
-    }
-  ]
+  "crons": []
 }
