@@ -43,9 +43,9 @@ function isDueAfter(minutesSinceTarget: number, startMinutesAfter: number): bool
 
 export async function runTimekeepingCron(db: SupabaseRestClient, now = new Date()): Promise<{ sent: number; groupSent: number; supportIntroSent: number; encouragementSent: number; sweptExpired: number; inactiveClosedTickets: number; cronStaleAlerted: boolean; errors: number }> {
   let sent = 0;
-  let groupSent =  ​0;
-  let supportIntroSent =  0;
-  let errors =  0;
+  let groupSent = 0;
+  let supportIntroSent = 0;
+  let errors = 0;
   const registrations = await listRegistrations(db);
 
   // Attendance and proof-of-work reminder nudges stay private; group posts are not sent for these events.

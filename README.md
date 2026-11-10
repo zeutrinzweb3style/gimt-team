@@ -110,7 +110,7 @@ Netlify fix checklist:
 2. Bot saves Telegram user/chat metadata and asks the user to select their name using buttons.
 3. User sees the dashboard with UTC and local shift time.
 4. User taps buttons for Time In, Time Out, Activity, Excuse, Absent, Shift Swap, Submit Proof, or Refresh.
-5. Vercel cron routes send private shift reminders using the saved personal chat IDs, including 1-hour and 10-minute Time In reminders, a shift-start reminder, a 1-hour proof-of-work reminder, a 10-minute Time Out reminder, a shift-end reminder, and missing-Time-Out alerts. Time In and Time Out are gated in both DMs and group action buttons: Time In opens at the scheduled start and closes at the scheduled end, and Time Out opens at the scheduled end, preventing early or post-shift attendance records. When `TEAM_GROUP_CHAT_ID` is configured, blocked DM attempts also post a team-wide warning. Once a member’s shift is active, the bot also sends each member a one-time private shift-greeting nudge with a suggested intro message to post in the groups, so everyone knows who’s on support that day. It also posts a public "assistant today" intro in every group listed in `TEAM_STATS_GROUP_CHAT_IDS` — mentioning the on-duty member by `@username` (or a clickable name link when no username is registered) so the community knows who can help them with GoodDollar, face verification, swap, bridge,and more. The intro is deduplicated per group per member per day via `cron_events` (`support_intro:{chatId}:{memberId}:{workDateUtc}`), so it is sent at most once per shift even if the cron reruns. Proof-of-work reminders are sent only while the member has an active Time In and has not timed out, but proof submission remains available after scheduled Time Out and is marked Late when submitted late.
+5. The timekeeping cron route sends private shift reminders using the saved personal chat IDs, including 1-hour and 10-minute Time In reminders, a shift-start reminder, a 1-hour proof-of-work reminder, a 10-minute Time Out reminder, a shift-end reminder, and missing-Time-Out alerts. Time In and Time Out are gated in both DMs and group action buttons: Time In opens at the scheduled start and closes at the scheduled end, and Time Out opens at the scheduled end, preventing early or post-shift attendance records. When `TEAM_GROUP_CHAT_ID` is configured, blocked DM attempts also post a team-wide warning. Once a member’s shift is active, the bot also sends each member a one-time private shift-greeting nudge with a suggested intro message to post in the groups, so everyone knows who’s on support that day. It also posts a public "assistant today" intro in every group listed in `TEAM_STATS_GROUP_CHAT_IDS` — mentioning the on-duty member by `@username` (or a clickable name link when no username is registered) so the community knows who can help them with GoodDollar, face verification, swap, bridge,and more. The intro is deduplicated per group per member per day via `cron_events` (`support_intro:{chatId}:{memberId}:{workDateUtc}`), so it is sent at most once per shift even if the cron reruns. Proof-of-work reminders are sent only while the member has an active Time In and has not timed out, but proof submission remains available after scheduled Time Out and is marked Late when submitted late.
 6. When `TEAM_GROUP_CHAT_ID` is configured, the bot also broadcasts each completed DM action (Time In, Time Out, Proof of Work, Excuse, Absent, Shift Swap requests and responses) to the team group so everyone can see attendance status in real time.
 7. Group prompts with "Time In Now", "Time Out Now", or "Submit Proof of Work" buttons are tracked by `public.group_action_messages`. As soon as the assigned member completes the action (from either the DM dashboard or the group button), the bot automatically deletes the stale prompts in the group and posts a single unified success summary. The success summary is short-lived: every 5 minutes the timekeeping cron sweeps and removes acknowledgements older than 5 minutes so the group stays uncluttered.
 8. When a member who is not the scheduled owner taps a group action button, the bot replies with a Telegram callback alert popup (visible only to that user) instead of posting a noisy "Only X can press this button." line to the group.
@@ -132,14 +132,16 @@ The dashboard is intentionally read-only and has no authentication. Anything sen
 
 ## Cron routes
 
-Vercel cron runs (via `vercel.json`, Hobby-compatible daily schedules only):
+The cron endpoints are plain HTTP routes. They are not scheduled by the repository or by the hosting platform; an external scheduler calls them on the intervals below. Point any free cron service (for example cron-job.org or UptimeRobot) at the URLs, passing `CRON_SECRET` as a Bearer token or a `secret` query parameter.
 
+- `/api/cron/timekeeping` every 5 minutes — shift reminders, late alerts, assistant-today intros, group-action sweeps, and support-ticket auto-close.
 - `/api/cron/daily-report` daily at 01:05 UTC to store a daily summary in activity logs.
 - `/api/cron/repeated-issue-report` daily at 01:15 UTC.
+- `/api/cron/health` every 5–15 minutes as a monitor (optional but recommended; see below).
 
-The every-5-minutes timekeeping job cannot run as a Vercel cron on the Hobby plan (Hobby accounts are limited to daily cron jobs), so it is triggered by a GitHub Actions workflow (`.github/workflows/timekeeping-cron.yml`) that pings `/api/cron/timekeeping` every 5 minutes. See [Timekeeping cron schedule](#timekeeping-cron-schedule) for the required repository secrets.
+The every-5-minutes timekeeping job cannot run as a Vercel cron on the Hobby plan (Hobby accounts are limited to daily cron jobs), which is why the schedule lives outside the host. Keeping it external also means a locked GitHub account or billing issue cannot silently stop the reminders.
 
-On Netlify, configure scheduled calls to the same URLs (`/api/cron/timekeeping` and `/api/cron/daily-report`) with your preferred scheduler, or migrate these wrappers to Netlify Scheduled Functions if you want Netlify to own the schedule.
+On Netlify the same URLs work through the `netlify.toml` redirects to `netlify/functions/`; the external scheduler calls the `/api/cron/*` paths on either host.
 
 Both endpoints accept either `Authorization: Bearer $CRON_SECRET` or `?secret=$CRON_SECRET` when `CRON_SECRET` is configured.
 
@@ -156,10 +158,10 @@ Point an uptime monitor (UptimeRobot, cron-job.org, or any HTTP checker) at this
 
 ### Time In / Time Out reminders did not arrive
 
-The reminder logic is driven entirely by the timekeeping cron (`/api/cron/timekeeping`), so if shift reminders, late alerts, or missing-Time-Out alerts are missing, check the scheduler before the code. On a Vercel deployment the every-5-minutes job runs from `.github/workflows/timekeeping-cron.yml`, not `vercel.json`, because Vercel Hobby only allows daily crons.
+The reminder logic is driven entirely by the timekeeping cron (`/api/cron/timekeeping`), so if shift reminders, late alerts, or missing-Time-Out alerts are missing, check the scheduler before the code. Nothing in this repository schedules the job; an external cron service must call the endpoint every 5 minutes.
 
 1. Call `GET /api/cron/health?secret=$CRON_SECRET`. A `503` with `reason: "no_heartbeat_recorded"` or `reason: "heartbeat_stale"` means no successful run has reached the endpoint — the scheduler is not firing, so no reminders were sent.
-2. If it is stale, confirm the GitHub Actions secrets `CRON_BASE_URL` and `CRON_SECRET` are set and that `CRON_SECRET` matches the Vercel environment variable exactly. A missing `CRON_BASE_URL` makes the workflow exit before it calls the endpoint.
+2. If it is stale, confirm your external scheduler is still enabled, is calling `https://<your-deployment>/api/cron/timekeeping` every 5 minutes, and that the `CRON_SECRET` it sends matches the deployment environment variable exactly.
 3. Confirm the member is registered (`public.team_registrations` has a `telegram_chat_id`). Reminders are private DMs, so an unregistered member receives none.
 4. If the health check is `healthy` but reminders still do not arrive, hit `/api/cron/timekeeping` manually and inspect the response: `sent` should be greater than `0` when a member has an active or upcoming shift.
 
@@ -178,22 +180,15 @@ After this is set, `/api/cron/timekeeping` can post group reminders 1 hour and 1
 
 ### Timekeeping cron schedule
 
-The reminders are only automatic when the host runs the timekeeping cron on a schedule. Because Vercel Hobby accounts only allow daily cron jobs, the every-5-minutes timekeeping job is triggered by the GitHub Actions workflow in `.github/workflows/timekeeping-cron.yml` instead of `vercel.json`. Netlify uses `netlify.toml` to run the `cron-timekeeping` scheduled function every 5 minutes; after deploy, confirm the function has a **Scheduled** badge in the Netlify Functions page. The daily report cron runs at 01:05 UTC in both hosts, and the repeated issue report cron runs at 01:15 UTC.
-
-To enable the GitHub Actions timekeeping cron, add two repository secrets under **Settings → Secrets and variables → Actions**:
-
-- `CRON_BASE_URL` — the deployment base URL, for example `https://your-project.vercel.app`.
-- `CRON_SECRET` — the same value as the Vercel `CRON_SECRET` environment variable.
-
-The workflow runs every 5 minutes and can also be started manually from the **Actions** tab (`workflow_dispatch`). GitHub may delay scheduled runs during peak load, so treat the 5-minute cadence as best-effort.
-
-**Recommended: use an external scheduler instead of (or in addition to) GitHub Actions.** GitHub disables scheduled workflows after 60 days of repository inactivity and, as happened here, a locked account or billing issue silently stops every run before a single step executes — which halts all reminders even though manual Time In/Out keeps working. A dedicated scheduler is independent of the GitHub account state, so the reminders keep firing. Point any free cron service (for example cron-job.org or UptimeRobot) at the endpoint every 5 minutes:
+The reminders are only automatic when an external scheduler calls the timekeeping cron on a schedule. This repository does not schedule it: `vercel.json` has no `crons`, `netlify.toml` has no `[functions.*] schedule` blocks, and there is no GitHub Actions workflow. Point any free cron service (for example cron-job.org or UptimeRobot) at the endpoint every 5 minutes:
 
 ```text
 GET https://<your-deployment>/api/cron/timekeeping?secret=<CRON_SECRET>
 ```
 
-The endpoint accepts either `Authorization: Bearer $CRON_SECRET` or `?secret=$CRON_SECRET`. Keep the GitHub Actions workflow as a backup if you like; both call the same endpoint and reminders are deduplicated per member per work date via `cron_events`, so running both will not double-send. Pair the scheduler with a monitor on `GET /api/cron/health` (see [Timekeeping cron health check](#timekeeping-cron-health-check)) so a stalled scheduler surfaces as a down alert and a team-group warning instead of silent missed reminders.
+The endpoint accepts either `Authorization: Bearer $CRON_SECRET` or `?secret=$CRON_SECRET`. A dedicated scheduler is independent of the GitHub account and the hosting plan, so a locked GitHub account or a billing issue cannot silently stop the reminders the way an in-repo scheduler can. Schedule the daily jobs the same way: `/api/cron/daily-report` at 01:05 UTC and `/api/cron/repeated-issue-report` at 01:15 UTC.
+
+Reminders are deduplicated per member per work date via `cron_events`, so overlapping runs (for example a retry after a timeout) will not double-send. Pair the scheduler with a monitor on `GET /api/cron/health` (see [Timekeeping cron health check](#timekeeping-cron-health-check)) so a stalled scheduler surfaces as a down alert and a team-group warning instead of silent missed reminders.
 
 If the cron is not scheduled, manual Time In/Out and Proof of Work submissions can still work, but the group reminder messages will not be sent automatically, including the daily "assistant today" intros in the stats groups.
 
