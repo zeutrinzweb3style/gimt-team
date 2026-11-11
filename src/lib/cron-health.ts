@@ -115,7 +115,7 @@ export async function checkCronStaleness(db: SupabaseRestClient, now = new Date(
     `Last successful run: ${lastRunText}\n` +
     `Alert threshold: ${freshness.staleAfterMinutes} minutes\n\n` +
     "Shift reminders may have been skipped since then — Time In, Time Out, proof-of-work, and assistant-today intros all depend on this cron.\n" +
-    "Check the external scheduler and the /api/cron/timekeeping endpoint.";
+    "Check the scheduler (GitHub Actions or an external cron) and the /api/cron/timekeeping endpoint.";
 
   const sent = await sendTeamGroupMessage(message, { parseMode: "HTML" });
   if (!sent) return result;
