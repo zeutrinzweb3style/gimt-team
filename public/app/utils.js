@@ -259,3 +259,35 @@ export function debounce(fn, delay = 350) {
     timeout = window.setTimeout(() => fn(...args), delay);
   };
 }
+
+export function copyTextToButton(link, btn, successText = "Link copied!") {
+  if (!link) return;
+  const originalText = btn?.textContent || "Copy link";
+  const onDone = (ok) => {
+    if (!btn) return;
+    btn.textContent = ok ? successText : "Copy failed";
+    setTimeout(() => { btn.textContent = originalText; }, 2000);
+  };
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(link).then(() => onDone(true), () => fallbackCopyText(link, onDone));
+  } else {
+    fallbackCopyText(link, onDone);
+  }
+}
+
+function fallbackCopyText(text, onDone) {
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    onDone(ok);
+  } catch (_error) {
+    onDone(false);
+  }
+}

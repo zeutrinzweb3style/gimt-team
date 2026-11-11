@@ -1,14 +1,14 @@
 import { PROOF_STATUS_PILL, state } from "./state.js";
 import { $, currentWeekKey, escapeHtml, fetchJson, fmtTimeUtc, fmtWeekLabel, groupByWeek, linkifyProofContent, memberLink, pill, renderProofAttachments, weekKeyFromDateString } from "./utils.js";
 
-export function renderProofCard(row) {
+export function renderProofCard(row, { showMember = true } = {}) {
   const statusCls = PROOF_STATUS_PILL[row.status] || "pill-slate";
   return `
     <article class="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3">
       <header class="flex items-center justify-between gap-2 flex-wrap">
         <div class="flex items-center gap-2 flex-wrap">
           ${pill("pill-slate", row.work_date_utc)}
-          <span>${memberLink(row.member_id, row.member_name)}</span>
+          ${showMember ? `<span>${memberLink(row.member_id, row.member_name)}</span>` : ""}
           ${pill(statusCls, row.status)}
           ${row.proof_type ? pill("pill-blue", row.proof_type) : ""}
         </div>

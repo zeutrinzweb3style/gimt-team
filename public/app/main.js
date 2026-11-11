@@ -7,14 +7,14 @@ import { loadCommunitySummary } from "./community-summary.js";
 import { loadIssueCategories, normalizeIssueCategory } from "./issue-categories.js";
 import { defaultIssueRange, getIssueUrlParams, loadIssueReport, openIssueReport, updateIssueUrlParams } from "./issue-report.js";
 import { closeMemberDetail, openMemberDetail } from "./member-detail.js";
-import { applyMemberProfileView, buildMemberShareLink, copyMemberShareLink, copyTextToButton, defaultMemberRange, getMemberUrlParams, loadMemberProfile, openMemberProfile, renderMemberProfileHeader, showMemberTabButton, updateMemberUrlParams } from "./member-profile.js";
+import { defaultMemberRange, getMemberUrlParams, loadMemberProfile, openMemberProfile, renderMemberProfileHeader, showMemberTabButton, updateMemberUrlParams } from "./member-profile.js";
 import { loadMembers } from "./members.js";
 import { loadProof } from "./proof.js";
-import { normalizeMemberView, state } from "./state.js";
+import { state } from "./state.js";
 import { loadStats, setStatsGrouping } from "./stats.js";
 import { initDefaultDates, refreshCurrent, switchTab, toggleWeek } from "./tabs.js";
 import { loadTicketSearch, loadTickets, renderTicketSearch, renderTickets } from "./tickets.js";
-import { $, $all, debounce, memberLink, wireSorting } from "./utils.js";
+import { $, $all, copyTextToButton, debounce, memberLink, wireSorting } from "./utils.js";
 
 export async function init() {
   initDefaultDates();
@@ -35,6 +35,15 @@ export async function init() {
     btn.addEventListener("click", () => switchTab(btn.dataset.menuTab));
   }
   $("#refresh-btn").addEventListener("click", refreshCurrent);
+  $("#home-continue").addEventListener("click", () => {
+    document.body.dataset.homeContinued = "true";
+    document.body.classList.add("member-review-flow");
+    document.body.classList.remove("home-welcome-mode");
+    $("#home-welcome").classList.add("hidden");
+    const directory = $("#home-directory");
+    directory.classList.remove("hidden");
+    directory.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   $("#community-summary-date").addEventListener("change", loadCommunitySummary);
   $("#community-summary-refresh").addEventListener("click", loadCommunitySummary);
 
@@ -122,7 +131,6 @@ export async function init() {
     renderMemberProfileHeader();
     loadMemberProfile();
   });
-  $("#member-copy-link").addEventListener("click", copyMemberShareLink);
   $("#member-back-btn").addEventListener("click", () => switchTab("home"));
 
   // Repeated issue report page (reachable at its own ?issue=... URL).
@@ -170,28 +178,6 @@ export async function init() {
     if (!card) return;
     e.preventDefault();
     openIssueReport(card.dataset.issueCategory, card.dataset.issueFrom, card.dataset.issueTo);
-  });
-
-  // Per-section "copy link" buttons (Support Tickets / Proof / Activity / Stats).
-  for (const btn of $all(".member-share-btn[data-share-view]")) {
-    btn.addEventListener("click", () => {
-      const view = normalizeMemberView(btn.dataset.shareView);
-      if (!view || !state.memberProfile.memberId) return;
-      copyTextToButton(buildMemberShareLink(view), btn, "Copied!");
-    });
-  }
-  // "View full profile" inside the focused-view banner.
-  $("#member-view-all").addEventListener("click", () => {
-    if (!state.memberProfile.memberId) return;
-    state.memberProfile.view = "";
-    updateMemberUrlParams({
-      memberId: state.memberProfile.memberId,
-      from: state.memberProfile.from,
-      to: state.memberProfile.to,
-      view: "",
-      replace: true
-    });
-    applyMemberProfileView();
   });
 
   window.addEventListener("popstate", () => {
