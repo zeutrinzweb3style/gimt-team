@@ -78,6 +78,8 @@ Each team member gets a public bio-link page: photo, headline, short bio, and an
 
 Profile photos upload through the same storage abstraction, into the `member-profile-avatars` logical bucket (Supabase bucket or R2 key prefix, depending on `STORAGE_DRIVER`).
 
+The dashboard reads a member's profile through the existing `/api/web/members` endpoint by passing `?member_id=<id>`, which returns `{ profile }` instead of the member list. Reusing that function keeps the project within Vercel Hobby's 12-function limit.
+
 ## Object storage (photo attachments)
 
 Proof-of-work and support-ticket photos are stored through a small storage abstraction (`src/lib/storage.ts`) so the backend can be swapped without touching the bot code. `STORAGE_DRIVER` selects it:
