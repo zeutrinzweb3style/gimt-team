@@ -347,7 +347,7 @@ async function fetchJson(path) {
   const r = await fetch(path, { headers: { accept: "application/json" } });
   if (!r.ok) {
     const deployHint = r.status === 404 && path.startsWith("/api/")
-      ? " (API route not found. Make sure the /api folder is included in the deployment.)"
+      ? " (API route not found. On Netlify, make sure netlify.toml and netlify/functions are deployed from the repository root; on Vercel, make sure the /api folder is included.)"
       : "";
     throw new Error(`${path} → ${r.status}${deployHint}`);
   }
@@ -1472,7 +1472,7 @@ async function loadTickets() {
 //   /?issue=MiniPay+GoodDapp+Swap+Failed&from=2025-09-01&to=2025-09-02
 // so the date range travelled with the link and the report is shareable as-is.
 // Tabs are used instead of separate HTML files so the single static entry point
-// keeps working without extra rewrites.
+// keeps working on both Vercel and Netlify without extra rewrites.
 
 // Dates default to the last 7 UTC days, matching the cron report window.
 function defaultIssueRange() {

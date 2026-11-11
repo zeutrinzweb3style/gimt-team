@@ -91,11 +91,18 @@ https://YOUR-VERCEL-DOMAIN.vercel.app/api/telegram/webhook?secret=YOUR_TELEGRAM_
 Check the returned `telegram.webhook.last_error_message` and `telegram.webhook.pending_update_count`. A common cause of a silent bot is a secret mismatch: if `TELEGRAM_WEBHOOK_SECRET` is configured in the deployment, the `setWebhook` call must include the exact same value as `secret_token`; otherwise this app will reject Telegram's POST requests with `401 Unauthorized`.
 
 
-### Dashboard API routes
+### Netlify dashboard API routes
 
-On Vercel, files under [`api/`](api) become serverless routes automatically, so `/api/web/*`, `/api/cron/*`, and `/api/telegram/webhook` are served directly from this repository with no extra configuration.
+On Vercel, files under [`api/`](api) become serverless routes automatically. Netlify does not serve Vercel-style `api/` files directly, so this repository includes [`netlify.toml`](netlify.toml) redirects plus thin wrappers under [`netlify/functions/`](netlify/functions) that forward Netlify Function events to the same API handlers used by Vercel.
 
-If a table shows an error such as `Failed to load: /api/web/activity?limit=200 → 404`, the deployment did not include the `api/` folder. Confirm the project builds from the repository root and that the latest commit is deployed.
+If the dashboard loads on Netlify but a table shows an error such as `Failed to load: /api/web/activity?limit=200 → 404`, the static files deployed but the Netlify functions/redirects were not included in that deploy.
+
+Netlify fix checklist:
+
+1. Set the Netlify site base directory to the repository root, not `public/`.
+2. Let Netlify use this repo's `netlify.toml`; it sets `publish = "public"` and `functions = "netlify/functions"`.
+3. Add the same environment variables in Netlify that you use in Vercel (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, Telegram secrets, and optional group/cron variables).
+4. Redeploy the latest commit, then open `https://YOUR-NETLIFY-SITE.netlify.app/api/web/activity?limit=1`; it should return JSON.
 
 ## Bot workflow
 
@@ -134,6 +141,8 @@ The cron endpoints are plain HTTP routes. They are not scheduled by the reposito
 
 The every-5-minutes timekeeping job cannot run as a Vercel cron on the Hobby plan (Hobby accounts are limited to daily cron jobs), which is why the schedule lives outside the host. Keeping it external also means a locked GitHub account or billing issue cannot silently stop the reminders.
 
+On Netlify the same URLs work through the `netlify.toml` redirects to `netlify/functions/`; the external scheduler calls the `/api/cron/*` paths on either host.
+
 Both endpoints accept either `Authorization: Bearer $CRON_SECRET` or `?secret=$CRON_SECRET` when `CRON_SECRET` is configured.
 
 ### Timekeeping cron health check
@@ -171,7 +180,7 @@ After this is set, `/api/cron/timekeeping` can post group reminders 1 hour and 1
 
 ### Timekeeping cron schedule
 
-The reminders are only automatic when an external scheduler calls the timekeeping cron on a schedule. This repository does not schedule it: `vercel.json` has no `crons` and there is no GitHub Actions workflow. Point any free cron service (for example cron-job.org or UptimeRobot) at the endpoint every 5 minutes:
+The reminders are only automatic when an external scheduler calls the timekeeping cron on a schedule. This repository does not schedule it: `vercel.json` has no `crons`, `netlify.toml` has no `[functions.*] schedule` blocks, and there is no GitHub Actions workflow. Point any free cron service (for example cron-job.org or UptimeRobot) at the endpoint every 5 minutes:
 
 ```text
 GET https://<your-deployment>/api/cron/timekeeping?secret=<CRON_SECRET>
