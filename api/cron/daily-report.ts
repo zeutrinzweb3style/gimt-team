@@ -1,7 +1,10 @@
 import { optionalEnv } from "../../src/lib/config.js";
+import { buildCommunitySummary, formatCommunitySummaryMessage } from "../../src/lib/community-summary.js";
 import { buildDailyReport } from "../../src/lib/daily-report.js";
 import { createActivity } from "../../src/lib/repository.js";
+import { eq, limit, order, params, type ActivityLog } from "../../src/lib/supabase.js";
 import { getSupabase } from "../../src/lib/supabase.js";
+import { isValidDateKey } from "../../src/lib/repeated-issue-report.js";
 
 function sendJson(response: any, statusCode: number, payload: Record<string, unknown>) {
   response.statusCode = statusCode;
@@ -21,6 +24,34 @@ export default async function handler(request: any, response: any) {
 
   try {
     const startedAt = new Date();
+    const communityOnly = url.searchParams.get("community") === "1";
+    if (communityOnly) {
+      const requestedDate = url.searchParams.get("date");
+      const reportDate = requestedDate || startedAt.toISOString().slice(0, 10);
+      if (!isValidDateKey(reportDate)) {
+        sendJson(response, 400, { ok: false, error: "date must be a valid YYYY-MM-DD UTC date" });
+        return;
+      }
+      const db = getSupabase();
+      const action = "COMMUNITY_CONCERNS_DAILY_SUMMARY";
+      const existing = await db.select<ActivityLog>("activity_logs", params(eq("action", action), order("created_at", false), limit(200)));
+      const previous = existing.find((row) => row.metadata?.summary_date === reportDate);
+      if (previous) {
+        sendJson(response, 200, { ok: true, skipped: true, date: reportDate, summary: previous.metadata?.summary ?? null, record_id: previous.id });
+        return;
+      }
+      const summary = await buildCommunitySummary(db, reportDate, startedAt);
+      const record = await createActivity(db, {
+        member_id: "system",
+        member_name: "System",
+        telegram_user_id: null,
+        action,
+        message: formatCommunitySummaryMessage(summary),
+        metadata: { summary_date: reportDate, summary }
+      });
+      sendJson(response, 200, { ok: true, skipped: false, date: reportDate, summary, record_id: record.id });
+      return;
+    }
     console.log(`[cron-daily-report] started at ${startedAt.toISOString()}`);
     const db = getSupabase();
     const report = await buildDailyReport(db);
