@@ -1,4 +1,4 @@
-import { eq, gte, inList, isNull, limit, lte, order, params, type ActivityLog, type AppSetting, type ConversationState, type GroupActionMessage, type GroupActionType, type GroupMessageStat, type ProofOfWorkReminder, type ProofOfWorkSubmission, type Registration, type SavedCommand, type ShiftRequest, type SupportTicket, type SupportTicketEvent, type SupportTicketMessage, type SupportTicketStatus, type SupabaseRestClient, type SupportTicketAttachment, type TeamInboxDm, type TelegramGroup, type TimeLog } from "./supabase.js";
+import { eq, gte, inList, isNull, limit, lte, order, params, type ActivityLog, type AppSetting, type ConversationState, type GroupActionMessage, type GroupActionType, type GroupMessageStat, type MemberProfile, type ProofOfWorkReminder, type ProofOfWorkSubmission, type Registration, type SavedCommand, type ShiftRequest, type SupportTicket, type SupportTicketEvent, type SupportTicketMessage, type SupportTicketStatus, type SupabaseRestClient, type SupportTicketAttachment, type TeamInboxDm, type TelegramGroup, type TimeLog } from "./supabase.js";
 import type { TelegramUser } from "./telegram-types.js";
 import type { TeamMember } from "./team-schedule.js";
 
@@ -52,6 +52,27 @@ export async function findRegistrationByMemberId(db: SupabaseRestClient, memberI
 
 export async function listRegistrations(db: SupabaseRestClient): Promise<Registration[]> {
   return db.select<Registration>("team_registrations");
+}
+
+export async function getMemberProfile(db: SupabaseRestClient, memberId: string): Promise<MemberProfile | null> {
+  const rows = await db.select<MemberProfile>("member_profiles", params(eq("member_id", memberId), limit(1)));
+  return rows[0] ?? null;
+}
+
+export async function listMemberProfiles(db: SupabaseRestClient): Promise<MemberProfile[]> {
+  return db.select<MemberProfile>("member_profiles");
+}
+
+export async function upsertMemberProfile(
+  db: SupabaseRestClient,
+  memberId: string,
+  patch: Partial<Pick<MemberProfile, "headline" | "bio" | "avatar" | "links">>
+): Promise<MemberProfile> {
+  return single(await db.upsert<MemberProfile>(
+    "member_profiles",
+    { member_id: memberId, ...patch, updated_at: new Date().toISOString() },
+    "member_id"
+  ));
 }
 
 export async function findTeamInboxDm(

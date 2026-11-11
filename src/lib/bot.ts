@@ -1,5 +1,5 @@
-import type { GroupActionType, ProofOfWorkSubmission, Registration, SupabaseRestClient, SupportTicket, SupportTicketAttachment } from "./supabase.js";
-import { dashboardKeyboard, excuseTypeKeyboard, homeKeyboard, proofOfWorkKeyboard, registrationKeyboard, supportReplyKeyboard, swapResponseKeyboard, swapTargetKeyboard, confirmAbsentKeyboard } from "./keyboards.js";
+import type { GroupActionType, MemberProfileLink, ProofOfWorkSubmission, Registration, SupabaseRestClient, SupportTicket, SupportTicketAttachment } from "./supabase.js";
+import { dashboardKeyboard, excuseTypeKeyboard, homeKeyboard, profileMenuKeyboard, profileRemoveLinkKeyboard, proofOfWorkKeyboard, registrationKeyboard, supportReplyKeyboard, swapResponseKeyboard, swapTargetKeyboard, confirmAbsentKeyboard } from "./keyboards.js";
 import {
   clearConversationState,
   createActivity,
@@ -20,11 +20,13 @@ import {
   listTeamInboxDmsByTicket,
   listRegistrations,
   getConversationState,
+  getMemberProfile,
   getOrCreateTimeLog,
   incrementGroupMessageCount,
   listRecentActivities,
   markProofOfWorkReminderSubmitted,
   updateProofOfWorkSubmission,
+  upsertMemberProfile,
   recordGroupActionMessage,
   recordSupportTicketEvent,
   recordSupportTicketMessage,
@@ -52,7 +54,7 @@ import { getTeamMember, TEAM_SCHEDULE, type TeamMember } from "./team-schedule.j
 import { getStorage, type StorageClient } from "./storage.js";
 import { answerCallbackQuery, copyMessage, deleteMessage, downloadFile, editMessageText, getChatMember, getFile, sendMessage, type SentTelegramMessage } from "./telegram.js";
 import type { TelegramCallbackQuery, TelegramChat, TelegramChatMemberUpdated, TelegramMessage, TelegramUpdate, TelegramUser } from "./telegram-types.js";
-import { getSupportMode, isTeamInboxEnabled, TEAM_INBOX_PRIMARY_GRACE_MINUTES } from "./config.js";
+import { getSupportMode, isTeamInboxEnabled, optionalEnv, TEAM_INBOX_PRIMARY_GRACE_MINUTES } from "./config.js";
 import {
   buildMemberTicketStats,
   formatMemberTicketStatsReply,
@@ -733,6 +735,7 @@ function ticketLabel(ticket: Pick<SupportTicket, "ticket_code" | "id">): string 
 
 const SUPPORT_TICKET_ATTACHMENT_BUCKET = "support-ticket-attachments";
 const PROOF_OF_WORK_ATTACHMENT_BUCKET = "proof-of-work-attachments";
+const PROFILE_AVATAR_BUCKET = "member-profile-avatars";
 
 function supportMessageText(message: TelegramMessage): string {
   const text = message.text?.trim() || message.caption?.trim() || "";
@@ -827,6 +830,20 @@ async function saveProofOfWorkAttachments(
     message,
     `proof of work ${memberId}/${workDateUtc}`
   );
+}
+
+async function saveProfileAvatar(
+  memberId: string,
+  message: TelegramMessage
+): Promise<SupportTicketAttachment | null> {
+  const attachments = await saveTelegramPhotoAttachments(
+    getStorage(),
+    PROFILE_AVATAR_BUCKET,
+    memberId,
+    message,
+    `profile avatar ${memberId}`
+  );
+  return attachments[0] ?? null;
 }
 
 function fileExtensionFromPath(path: string): string | null {
@@ -2365,8 +2382,156 @@ async function handleCallback(db: SupabaseRestClient, callback: TelegramCallback
 
   if (data.startsWith("swap:accept:") || data.startsWith("swap:reject:")) {
     await handleSwapResponse(db, chatId, messageId, data, callback.from);
+    return;
+  }
+
+  if (data === "profile:menu") {
+    await clearConversationState(db, callback.from.id);
+    await editMessageText(chatId, messageId, await buildProfileMenuText(db, registration.member_id), {
+      replyMarkup: profileMenuKeyboard((await getProfileLinks(db, registration.member_id)).length)
+    });
+    return;
+  }
+
+  if (data === "profile:photo") {
+    await setConversationState(db, callback.from.id, "awaiting_profile_photo");
+    await editMessageText(chatId, messageId, "📷 Send the photo you want as your profile picture. Use a square image for the best result.", {
+      replyMarkup: homeKeyboard()
+    });
+    return;
+  }
+
+  if (data === "profile:headline") {
+    await setConversationState(db, callback.from.id, "awaiting_profile_headline");
+    await editMessageText(chatId, messageId, "✍️ Type your headline — a short tagline shown under your name (e.g. \"Community Moderator · PH\"). Send /cancel to keep the current one.", {
+      replyMarkup: homeKeyboard()
+    });
+    return;
+  }
+
+  if (data === "profile:bio") {
+    await setConversationState(db, callback.from.id, "awaiting_profile_bio");
+    await editMessageText(chatId, messageId, "📝 Type a short bio for your profile. Send /cancel to keep the current one.", {
+      replyMarkup: homeKeyboard()
+    });
+    return;
+  }
+
+  if (data === "profile:link:add") {
+    const links = await getProfileLinks(db, registration.member_id);
+    await setConversationState(db, callback.from.id, "awaiting_profile_link");
+    const cap = links.length >= PROFILE_LINK_SOFT_CAP
+      ? `\n\n⚠️ You already have ${links.length} links. Consider keeping the list focused.`
+      : "";
+    await editMessageText(chatId, messageId, `🔗 Send the link as "Label | URL" (e.g. "Twitter | https://twitter.com/you").\n\nA bare URL also works — I'll guess a label from the domain.${cap}`, {
+      replyMarkup: homeKeyboard()
+    });
+    return;
+  }
+
+  if (data === "profile:link:remove") {
+    const links = await getProfileLinks(db, registration.member_id);
+    if (!links.length) {
+      await editMessageText(chatId, messageId, "You have no links to remove.", {
+        replyMarkup: profileMenuKeyboard(0)
+      });
+      return;
+    }
+    await editMessageText(chatId, messageId, "Which link do you want to remove?", {
+      replyMarkup: profileRemoveLinkKeyboard(links)
+    });
+    return;
+  }
+
+  if (data.startsWith("profile:link:del:")) {
+    const index = Number.parseInt(data.slice("profile:link:del:".length), 10);
+    const links = await getProfileLinks(db, registration.member_id);
+    if (!Number.isInteger(index) || index < 0 || index >= links.length) {
+      await editMessageText(chatId, messageId, "That link is no longer available.", {
+        replyMarkup: profileMenuKeyboard(links.length)
+      });
+      return;
+    }
+    const [removed] = links.splice(index, 1);
+    await upsertMemberProfile(db, registration.member_id, { links });
+    await editMessageText(chatId, messageId, `🗑 Removed "${removed.label}".\n\n${await buildProfileMenuText(db, registration.member_id)}`, {
+      replyMarkup: profileMenuKeyboard(links.length)
+    });
+    return;
+  }
+
+  if (data === "profile:view") {
+    const url = buildProfilePublicUrl(registration.member_id);
+    await editMessageText(
+      chatId,
+      messageId,
+      url
+        ? `👀 Your public profile:\n${url}\n\nShare this link anywhere — it opens your bio-link page on the dashboard.`
+        : "Your profile lives on the team dashboard. Open the dashboard and pick your name to see it.",
+      { replyMarkup: profileMenuKeyboard((await getProfileLinks(db, registration.member_id)).length) }
+    );
+    return;
   }
 }
+
+async function getProfileLinks(db: SupabaseRestClient, memberId: string): Promise<MemberProfileLink[]> {
+  const profile = await getMemberProfile(db, memberId);
+  return Array.isArray(profile?.links) ? profile!.links : [];
+}
+
+function buildProfilePublicUrl(memberId: string): string | null {
+  const base = (optionalEnv("CRON_BASE_URL") || optionalEnv("PUBLIC_BASE_URL") || "").replace(/\/$/, "");
+  if (!base) return null;
+  return `${base}/?member=${encodeURIComponent(memberId)}`;
+}
+
+async function buildProfileMenuText(db: SupabaseRestClient, memberId: string): Promise<string> {
+  const member = getTeamMember(memberId);
+  const profile = await getMemberProfile(db, memberId);
+  const links = Array.isArray(profile?.links) ? profile.links : [];
+  const lines = [
+    `👤 ${member?.name ?? memberId} — Profile`,
+    "",
+    `Headline: ${profile?.headline?.trim() || "—"}`,
+    `Bio: ${profile?.bio?.trim() || "—"}`,
+    `Photo: ${profile?.avatar?.url ? "set ✅" : "not set"}`,
+    "",
+    `🔗 Links (${links.length}):`
+  ];
+  if (!links.length) {
+    lines.push("  • none yet");
+  } else {
+    links.slice(0, 10).forEach((link, index) => lines.push(`  ${index + 1}. ${link.label} — ${link.url}`));
+    if (links.length > 10) lines.push(`  …and ${links.length - 10} more`);
+  }
+  lines.push("", "Pick an action below.");
+  return lines.join("\n");
+}
+
+/** Accepts "Label | URL" or a bare URL and returns a cleaned link, or null. */
+export function parseProfileLinkInput(text: string): MemberProfileLink | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  const separatorIndex = trimmed.indexOf("|");
+  let label = separatorIndex >= 0 ? trimmed.slice(0, separatorIndex).trim() : "";
+  let rawUrl = (separatorIndex >= 0 ? trimmed.slice(separatorIndex + 1) : trimmed).trim();
+  if (!rawUrl) return null;
+  if (!/^https?:\/\//i.test(rawUrl)) rawUrl = `https://${rawUrl}`;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) return null;
+
+  if (!label) label = parsed.hostname.replace(/^www\./i, "");
+  return { label: label.slice(0, 40), url: parsed.href };
+}
+
+const PROFILE_LINK_SOFT_CAP = 30;
 
 async function handleStatefulReply(
   db: SupabaseRestClient,
@@ -2497,8 +2662,106 @@ async function handleStatefulReply(
     return;
   }
 
+  if (state === "awaiting_profile_photo") {
+    if (message.text?.trim().startsWith("/cancel")) {
+      await clearConversationState(db, user.id);
+      await sendMessage(message.chat.id, "No changes made.", {
+        replyMarkup: profileMenuKeyboard((await getProfileLinks(db, registration.member_id)).length)
+      });
+      return;
+    }
+    if (!message.photo?.length) {
+      await sendMessage(message.chat.id, "That doesn't look like a photo. Send an image, or send /cancel to go back.", {
+        replyMarkup: homeKeyboard()
+      });
+      return;
+    }
+    const avatar = await saveProfileAvatar(registration.member_id, message);
+    await clearConversationState(db, user.id);
+    if (!avatar) {
+      await sendMessage(message.chat.id, "I couldn't store that photo. Please try again with a different image.", {
+        replyMarkup: dashboardKeyboard()
+      });
+      return;
+    }
+    await upsertMemberProfile(db, registration.member_id, { avatar });
+    await createActivity(db, {
+      member_id: registration.member_id,
+      member_name: registration.member_name,
+      telegram_user_id: user.id,
+      action: "PROFILE_UPDATED",
+      message: `${registration.member_name} updated their profile photo.`,
+      metadata: { field: "avatar" }
+    });
+    await sendMessage(message.chat.id, "✅ Profile photo updated.", {
+      replyMarkup: profileMenuKeyboard((await getProfileLinks(db, registration.member_id)).length)
+    });
+    return;
+  }
+
   const reason = message.text?.trim();
   if (!reason) return;
+
+  if (state === "awaiting_profile_headline" || state === "awaiting_profile_bio" || state === "awaiting_profile_link") {
+    if (reason.startsWith("/cancel")) {
+      await clearConversationState(db, user.id);
+      await sendMessage(message.chat.id, "No changes made.", {
+        replyMarkup: profileMenuKeyboard((await getProfileLinks(db, registration.member_id)).length)
+      });
+      return;
+    }
+  }
+
+  if (state === "awaiting_profile_headline") {
+    await clearConversationState(db, user.id);
+    await upsertMemberProfile(db, registration.member_id, { headline: reason.slice(0, 120) });
+    await sendMessage(message.chat.id, "✅ Headline updated.", {
+      replyMarkup: profileMenuKeyboard((await getProfileLinks(db, registration.member_id)).length)
+    });
+    return;
+  }
+
+  if (state === "awaiting_profile_bio") {
+    await clearConversationState(db, user.id);
+    await upsertMemberProfile(db, registration.member_id, { bio: reason.slice(0, 600) });
+    await sendMessage(message.chat.id, "✅ Bio updated.", {
+      replyMarkup: profileMenuKeyboard((await getProfileLinks(db, registration.member_id)).length)
+    });
+    return;
+  }
+
+  if (state === "awaiting_profile_link") {
+    const link = parseProfileLinkInput(reason);
+    if (!link) {
+      await sendMessage(message.chat.id, 'That doesn\'t look like a valid link. Send it as "Label | https://example.com", or tap 🏠 Dashboard to cancel.', {
+        replyMarkup: homeKeyboard()
+      });
+      return;
+    }
+    const links = await getProfileLinks(db, registration.member_id);
+    if (links.length >= PROFILE_LINK_SOFT_CAP) {
+      await clearConversationState(db, user.id);
+      await sendMessage(message.chat.id, `You've reached the soft limit of ${PROFILE_LINK_SOFT_CAP} links. Remove one before adding more.`, {
+        replyMarkup: profileMenuKeyboard(links.length)
+      });
+      return;
+    }
+    links.push(link);
+    await clearConversationState(db, user.id);
+    await upsertMemberProfile(db, registration.member_id, { links });
+    await createActivity(db, {
+      member_id: registration.member_id,
+      member_name: registration.member_name,
+      telegram_user_id: user.id,
+      action: "PROFILE_UPDATED",
+      message: `${registration.member_name} added a profile link.`,
+      metadata: { field: "links" }
+    });
+    await sendMessage(message.chat.id, `✅ Added "${link.label}".\n\n${await buildProfileMenuText(db, registration.member_id)}`, {
+      replyMarkup: profileMenuKeyboard(links.length)
+    });
+    return;
+  }
 
   await clearConversationState(db, user.id);
 

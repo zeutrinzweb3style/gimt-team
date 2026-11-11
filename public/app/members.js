@@ -1,4 +1,5 @@
 import { state } from "./state.js";
+import { renderAvatar } from "./profile.js";
 import { $, $all, escapeHtml, fetchJson } from "./utils.js";
 
 export async function loadMembers() {
@@ -31,14 +32,24 @@ export function renderHomeMembersGrid() {
     return;
   }
   container.innerHTML = state.members
-    .map((member) => `
+    .map((member) => {
+      const headline = String(member.headline || "").trim();
+      const linkCount = Number(member.link_count) || 0;
+      const badges = [];
+      if (linkCount > 0) badges.push(`🔗 ${linkCount} link${linkCount === 1 ? "" : "s"}`);
+      if (member.registered) badges.push("● Registered");
+      return `
       <button type="button" class="member-tile" data-member-tile="${escapeHtml(member.id)}">
+        ${renderAvatar({ name: member.name, avatarUrl: member.avatar_url, size: "md" })}
         <span class="tile-name">${escapeHtml(member.name)}</span>
+        ${headline ? `<span class="tile-headline">${escapeHtml(headline)}</span>` : ""}
         <span class="tile-shift">${escapeHtml(member.shift_start_utc)}\u2013${escapeHtml(member.shift_end_utc)} UTC</span>
         <span class="tile-zone">${escapeHtml(member.timezone)}</span>
-        <span class="tile-cta">Open dedicated page \u2192</span>
+        ${badges.length ? `<span class="tile-badges">${badges.map((b) => `<span class="tile-badge">${escapeHtml(b)}</span>`).join("")}</span>` : ""}
+        <span class="tile-cta">View profile \u2192</span>
       </button>
-    `)
+    `;
+    })
     .join("");
 }
 

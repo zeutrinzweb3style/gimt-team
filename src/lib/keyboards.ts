@@ -33,9 +33,38 @@ export function dashboardKeyboard(): InlineKeyboardMarkup {
         { text: "🔁 Shift Swap", callback_data: "swap:start" },
         { text: "📎 Submit Proof", callback_data: "proof:start" }
       ],
+      [{ text: "👤 My Profile", callback_data: "profile:menu" }],
       [{ text: "🔄 Refresh", callback_data: "dashboard:refresh" }]
     ]
   };
+}
+
+export function profileMenuKeyboard(linkCount: number): InlineKeyboardMarkup {
+  const rows = [
+    [{ text: "🖼 Set / Update Photo", callback_data: "profile:photo" }],
+    [
+      { text: "✍️ Edit Headline", callback_data: "profile:headline" },
+      { text: "📝 Edit Bio", callback_data: "profile:bio" }
+    ],
+    [{ text: "🔗 Add Link", callback_data: "profile:link:add" }]
+  ];
+
+  if (linkCount > 0) {
+    rows.push([{ text: "🗑 Remove Link", callback_data: "profile:link:remove" }]);
+  }
+
+  rows.push([{ text: "👀 View My Profile", callback_data: "profile:view" }]);
+  rows.push([{ text: "🏠 Dashboard", callback_data: "dashboard:refresh" }]);
+
+  return { inline_keyboard: rows };
+}
+
+export function profileRemoveLinkKeyboard(links: { label: string; url: string }[]): InlineKeyboardMarkup {
+  const rows = links.map((link, index) => [
+    { text: `🗑 ${link.label}`, callback_data: `profile:link:del:${index}` }
+  ]);
+  rows.push([{ text: "❌ Cancel", callback_data: "profile:menu" }]);
+  return { inline_keyboard: rows };
 }
 
 export function homeKeyboard(): InlineKeyboardMarkup {

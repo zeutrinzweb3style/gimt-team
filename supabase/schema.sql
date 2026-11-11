@@ -380,3 +380,16 @@ create index if not exists team_inbox_dms_member_idx on public.team_inbox_dms(te
 -- rather than whichever customer message happened to arrive most recently.
 alter table if exists public.team_inbox_dms
   add column if not exists source_telegram_message_id bigint;
+
+-- Member bio-link profiles: one row per member, holding the public-facing
+-- headline, short bio, avatar (stored via the object-storage driver) and an
+-- ordered list of links. Kept separate from team_registrations so the profile
+-- can be edited without touching registration/identity data.
+create table if not exists public.member_profiles (
+  member_id text primary key,
+  headline text,
+  bio text,
+  avatar jsonb,
+  links jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now()
+);
