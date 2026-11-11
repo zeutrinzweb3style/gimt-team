@@ -750,6 +750,7 @@
         </div>
       </div>
       <nav class="dashboard-shell max-w-screen-2xl mx-auto px-3 sm:px-4 pb-2.5 flex gap-1.5 overflow-x-auto" role="tablist">
+        <button class="tab-btn px-3 py-1.5 rounded-md text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-teal-50 dark:hover:bg-slate-800 whitespace-nowrap" role="tab" aria-selected="false" data-tab="community-summary">Community Concerns</button>
         <button class="tab-btn px-3 py-1.5 rounded-md text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-teal-50 dark:hover:bg-slate-800 whitespace-nowrap" role="tab" aria-selected="false" data-tab="home">Home</button>
         <button class="tab-btn px-3 py-1.5 rounded-md text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-teal-50 dark:hover:bg-slate-800 whitespace-nowrap" role="tab" aria-selected="false" data-tab="activity">Activity History</button>
         <button class="tab-btn px-3 py-1.5 rounded-md text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-teal-50 dark:hover:bg-slate-800 whitespace-nowrap" role="tab" aria-selected="false" data-tab="stats">Stats</button>
@@ -761,6 +762,23 @@
     </header>
 
     <main class="dashboard-shell max-w-screen-2xl mx-auto px-3 sm:px-4 py-4 sm:py-5">
+      <section data-tab-panel="community-summary" class="section-card p-4 sm:p-5">
+        <div class="flex items-end justify-between gap-3 flex-wrap mb-4">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700 dark:text-teal-300">Daily record</p>
+            <h2 class="text-2xl font-bold tracking-tight">Community Concerns</h2>
+            <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">A dated summary of the questions raised by users.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="community-summary-date" class="text-xs text-slate-500 dark:text-slate-400">UTC date</label>
+            <input id="community-summary-date" type="date" class="filter-control w-auto min-w-0" />
+            <button id="community-summary-refresh" type="button" class="px-3 py-2 rounded-md border border-slate-300 dark:border-slate-700 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800">Refresh</button>
+          </div>
+        </div>
+        <div id="community-summary-content" aria-live="polite">
+          <p class="text-sm text-slate-500 dark:text-slate-400">Choose a date to view its community concerns record.</p>
+        </div>
+      </section>
       <section data-tab-panel="home">
         <div class="welcome-card rounded-3xl p-5 sm:p-7 mb-4 overflow-hidden relative">
           <div class="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-teal-200/50 dark:bg-teal-500/10"></div>
