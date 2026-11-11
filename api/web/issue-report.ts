@@ -22,7 +22,7 @@ export default async function handler(request: any, response: any) {
     const category = url.searchParams.get("category") || url.searchParams.get("issue") || "";
 
     // No category means "list the options", which keeps the dashboard dropdown
-    // in sync with the classifier instead of duplicating the list in app.js.
+    // in sync with the classifier instead of duplicating the list in the frontend.
     if (!category.trim()) {
       sendJson(response, 200, { ok: true, categories: AI_SUPPORT_REPORT_CATEGORIES, report: null });
       return;

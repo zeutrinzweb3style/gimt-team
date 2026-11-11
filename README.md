@@ -146,6 +146,8 @@ The dashboard lives in the [`public/`](public) folder and is served as a static 
 
 The dashboard is intentionally read-only and has no authentication. Anything sensitive should stay in Supabase row-level security or be omitted from these endpoints.
 
+The frontend is a plain ES-module SPA with no build step. `public/index.html` loads `public/styles.css` and `public/app/main.js`; the rest of the UI lives in small modules under [`public/app/`](public/app) (state, shared utils, and one module per dashboard section).
+
 ## Cron routes
 
 Vercel cron runs (via `vercel.json`, Hobby-compatible daily schedules only):
