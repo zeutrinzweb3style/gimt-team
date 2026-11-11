@@ -11,6 +11,8 @@ import { $, $all, setLastUpdated } from "./utils.js";
 export function switchTab(name) {
   const previousTab = state.currentTab;
   state.currentTab = name;
+  document.body.classList.toggle("member-profile-mode", name === "member");
+  document.body.classList.toggle("home-welcome-mode", name === "home" && document.body.dataset.homeContinued !== "true");
   for (const btn of $all(".tab-btn")) {
     btn.setAttribute("aria-selected", btn.dataset.tab === name ? "true" : "false");
   }

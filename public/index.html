@@ -28,7 +28,7 @@
     </script>
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body class="min-h-full bg-gradient-to-br from-slate-50 via-teal-50 to-sky-50 text-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950 dark:text-slate-100">
+  <body class="home-welcome-mode min-h-full bg-gradient-to-br from-slate-50 via-teal-50 to-sky-50 text-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950 dark:text-slate-100">
     <header class="border-b border-teal-100 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur sticky top-0 z-20 shadow-sm">
       <div class="dashboard-shell max-w-screen-2xl mx-auto px-3 sm:px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap mobile-stack">
         <div class="flex items-center gap-2 min-w-0">
@@ -74,74 +74,29 @@
           <p class="text-sm text-slate-500 dark:text-slate-400">Choose a date to view its community concerns record.</p>
         </div>
       </section>
-      <!-- Home (menu cards + team member grid) -->
-      <section data-tab-panel="home">
-        <div class="welcome-card rounded-3xl p-5 sm:p-7 mb-4 overflow-hidden relative">
+      <!-- Home: welcome first, then the member directory. -->
+      <section data-tab-panel="home" class="home-page">
+        <div id="home-welcome" class="welcome-card rounded-3xl p-6 sm:p-10 mb-4 overflow-hidden relative text-center">
           <div class="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-teal-200/50 dark:bg-teal-500/10"></div>
           <div class="absolute -left-16 -bottom-20 h-48 w-48 rounded-full bg-sky-200/50 dark:bg-sky-500/10"></div>
-          <div class="relative max-w-3xl">
-            <p class="text-xs font-bold uppercase tracking-[0.25em] text-teal-700 dark:text-teal-300 mb-3">Dashboard Portal</p>
-            <h2 class="text-2xl sm:text-4xl font-black tracking-tight text-slate-950 dark:text-white leading-tight">
-              WELCOME TO GOODDOLLAR INTERNATIONAL MODERATION TEAM 2024–2026
-            </h2>
-            <p class="mt-4 text-sm sm:text-base text-slate-600 dark:text-slate-300">
-              Select a menu below to view Activity History, Stats, Proof of Work, Support Tickets, or Ticket Search. Dashboard content stays hidden until you choose a section.
-            </p>
+          <div class="relative max-w-3xl mx-auto">
+            <p class="text-xs font-bold uppercase tracking-[0.25em] text-teal-700 dark:text-teal-300 mb-3">GoodDollar International Moderation Team · 2024–2026</p>
+            <h2 class="text-2xl sm:text-4xl font-black tracking-tight text-slate-950 dark:text-white leading-tight">Welcome to the team review portal</h2>
+            <p class="mt-4 text-sm sm:text-base text-slate-600 dark:text-slate-300">Continue to the member directory to review each member’s profile and Proof of Work submissions.</p>
+            <button id="home-continue" type="button" class="home-continue-btn">Continue <span aria-hidden="true">→</span></button>
           </div>
         </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
-          <button type="button" class="menu-card" data-menu-tab="activity">
-            <span class="text-3xl font-black text-teal-600 dark:text-teal-300">A</span>
-            <span>
-              <span class="block text-lg font-bold text-slate-950 dark:text-white">Activity History</span>
-              <span class="block mt-1 text-sm text-slate-600 dark:text-slate-300">Time In, Time Out, excuses, absences, and shift actions.</span>
-            </span>
-          </button>
-          <button type="button" class="menu-card" data-menu-tab="stats">
-            <span class="text-3xl font-black text-teal-600 dark:text-teal-300">S</span>
-            <span>
-              <span class="block text-lg font-bold text-slate-950 dark:text-white">Stats</span>
-              <span class="block mt-1 text-sm text-slate-600 dark:text-slate-300">Group message counts by member and tracked chat.</span>
-            </span>
-          </button>
-          <button type="button" class="menu-card" data-menu-tab="proof">
-            <span class="text-3xl font-black text-teal-600 dark:text-teal-300">✓</span>
-            <span>
-              <span class="block text-lg font-bold text-slate-950 dark:text-white">Proof of Work</span>
-              <span class="block mt-1 text-sm text-slate-600 dark:text-slate-300">Submitted work proofs and history per member.</span>
-            </span>
-          </button>
-          <button type="button" class="menu-card" data-menu-tab="tickets">
-            <span class="text-3xl font-black text-teal-600 dark:text-teal-300">T</span>
-            <span>
-              <span class="block text-lg font-bold text-slate-950 dark:text-white">Support Tickets</span>
-              <span class="block mt-1 text-sm text-slate-600 dark:text-slate-300">Ticket status and assigned responder.</span>
-            </span>
-          </button>
-          <button type="button" class="menu-card" data-menu-tab="ticket-search">
-            <span class="text-3xl font-black text-teal-600 dark:text-teal-300">🔎</span>
-            <span>
-              <span class="block text-lg font-bold text-slate-950 dark:text-white">Ticket Search</span>
-              <span class="block mt-1 text-sm text-slate-600 dark:text-slate-300">Find tickets by number, user, team member, or conversation text.</span>
-            </span>
-          </button>
-        </div>
-
-        <div class="mt-6">
-          <div class="flex items-end justify-between gap-3 flex-wrap mb-3">
-            <div>
-              <h3 class="text-base font-semibold text-slate-950 dark:text-white">Team Directory</h3>
-              <p class="text-xs text-slate-500 dark:text-slate-400">Each card is a member's bio-link profile — photo, headline, and their links. Open a profile for ticket history, proof of work, activity, and group messages.</p>
-            </div>
-            <p class="text-[11px] text-slate-500 dark:text-slate-400">Default range: last 7 days · customize from the page</p>
+        <div id="home-directory" class="home-directory mt-4 mb-6 hidden">
+          <div class="text-center mb-4">
+            <h3 class="text-xl font-bold text-slate-950 dark:text-white">Team Directory</h3>
+            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Choose a member to review their Proof of Work submissions.</p>
+            <p class="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Default range: last 7 days · customize from the profile</p>
           </div>
-          <div id="home-members-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <p class="text-sm text-slate-500 dark:text-slate-400 col-span-full">Loading team members…</p>
+          <div id="home-members-grid" class="home-members-grid">
+            <p class="text-sm text-slate-500 dark:text-slate-400">Loading team members…</p>
           </div>
         </div>
       </section>
-
       <!-- Activity History (spreadsheet) -->
       <section data-tab-panel="activity" class="section-card p-3 sm:p-4">
         <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -348,88 +303,30 @@
         <p id="tickets-count" class="mt-2 text-xs text-slate-500 dark:text-slate-400"></p>
       </section>
 
-      <!-- Member Profile (per-member focused view via ?member=...&from=...&to=...) -->
-      <section data-tab-panel="member" class="space-y-4">
+      <!-- Dedicated member review route: member identity + proof of work only. -->
+      <section data-tab-panel="member" class="member-review-page space-y-4">
         <div class="member-profile-card">
-          <button type="button" id="member-back-btn" class="member-back-link">
-            ← Back to all members
-          </button>
-
+          <button type="button" id="member-back-btn" class="member-back-link">← Back to all members</button>
           <div id="member-profile-hero" class="bio-hero">
             <div class="bio-hero-avatar"><span class="avatar avatar-xl avatar-mono"><span>—</span></span></div>
-            <div class="bio-hero-body">
-              <h2 id="member-profile-name" class="bio-hero-name">—</h2>
-              <p id="member-profile-meta" class="bio-hero-meta">—</p>
-            </div>
+            <div class="bio-hero-body"><h2 class="bio-hero-name">Loading member…</h2></div>
           </div>
-
           <div class="member-profile-controls">
             <p id="member-profile-range-label" class="member-range-label">—</p>
             <div class="flex items-end gap-2 flex-wrap mobile-stack">
-              <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                From
-                <input id="member-from" type="date" class="filter-control mt-1" />
-              </label>
-              <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                To
-                <input id="member-to" type="date" class="filter-control mt-1" />
-              </label>
-              <button type="button" id="member-copy-link" class="copy-link-btn">Copy full-profile link</button>
-            </div>
-          </div>
-
-          <div id="member-focus-banner" class="member-focus-banner hidden">
-            <span>Focused view: <strong id="member-focus-label">—</strong>. This link only shows one section.</span>
-            <button type="button" id="member-view-all" class="member-focus-all">View full profile →</button>
-          </div>
-
-          <div class="member-share-bar">
-            <span class="member-share-title">Separate links to post on Discourse:</span>
-            <div class="member-share-buttons">
-              <button type="button" class="member-share-btn" data-share-view="tickets">Support Tickets link</button>
-              <button type="button" class="member-share-btn" data-share-view="proof">Proof of Work link</button>
-              <button type="button" class="member-share-btn" data-share-view="activity">Activity History link</button>
-              <button type="button" class="member-share-btn" data-share-view="stats">Stats link</button>
+              <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">From<input id="member-from" type="date" class="filter-control mt-1" /></label>
+              <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">To<input id="member-to" type="date" class="filter-control mt-1" /></label>
             </div>
           </div>
         </div>
-
-        <nav class="member-anchor-bar" aria-label="Profile sections">
-          <a class="member-anchor" href="#member-section-tickets">Tickets</a>
-          <a class="member-anchor" href="#member-section-proof">Proof</a>
-          <a class="member-anchor" href="#member-section-activity">Activity</a>
-          <a class="member-anchor" href="#member-section-stats">Group Messages</a>
-        </nav>
-
-        <div class="member-section" data-member-section="tickets" id="member-section-tickets">
-          <h3>Support Tickets &amp; Conversations <span id="member-tickets-count" class="section-count">0</span></h3>
-          <div id="member-tickets-list">
-            <p class="member-empty">Loading…</p>
+        <div class="member-section member-proof-section" data-member-section="proof" id="member-section-proof">
+          <div class="member-proof-heading">
+            <div><h3>Proof of Work Submissions</h3><p>Review this member’s submitted work, links, and screenshots.</p></div>
+            <span id="member-proof-count" class="section-count">0</span>
           </div>
-        </div>
-
-        <div class="member-section" data-member-section="proof" id="member-section-proof">
-          <h3>Proof of Work Submissions <span id="member-proof-count" class="section-count">0</span></h3>
-          <div id="member-proof-list">
-            <p class="member-empty">Loading…</p>
-          </div>
-        </div>
-
-        <div class="member-section" data-member-section="activity" id="member-section-activity">
-          <h3>Activity Log (Time In / Out / Excuses / Swaps) <span id="member-activity-count" class="section-count">0</span></h3>
-          <div id="member-activity-list">
-            <p class="member-empty">Loading…</p>
-          </div>
-        </div>
-
-        <div class="member-section" data-member-section="stats" id="member-section-stats">
-          <h3>Group Messages <span id="member-messages-count" class="section-count">0</span></h3>
-          <div id="member-messages-list">
-            <p class="member-empty">Loading…</p>
-          </div>
+          <div id="member-proof-list"><p class="member-empty">Loading…</p></div>
         </div>
       </section>
-
       <!-- Repeated Issue Report (own shareable URL via ?issue=...&from=...&to=...) -->
       <section data-tab-panel="issue-report" class="section-card p-3 sm:p-4">
         <div class="flex items-start justify-between gap-3 flex-wrap mb-3">
