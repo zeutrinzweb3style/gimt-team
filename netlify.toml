@@ -30,11 +30,6 @@
   status = 200
 
 [[redirects]]
-  from = "/api/web/profiles"
-  to = "/.netlify/functions/web-profiles"
-  status = 200
-
-[[redirects]]
   from = "/api/web/proof-submissions"
   to = "/.netlify/functions/web-proof-submissions"
   status = 200

@@ -1,5 +1,5 @@
 import { TEAM_SCHEDULE } from "../../src/lib/team-schedule.js";
-import { listMemberProfiles, listRegistrations } from "../../src/lib/repository.js";
+import { getMemberProfile, listMemberProfiles, listRegistrations } from "../../src/lib/repository.js";
 import { getSupabase } from "../../src/lib/supabase.js";
 
 function sendJson(response: any, statusCode: number, payload: unknown) {
@@ -9,9 +9,20 @@ function sendJson(response: any, statusCode: number, payload: unknown) {
   response.end(JSON.stringify(payload));
 }
 
-export default async function handler(_request: any, response: any) {
+// Profile lookup lives here (rather than its own function) to stay within the
+// Vercel Hobby plan limit of 12 serverless functions.
+export default async function handler(request: any, response: any) {
   try {
+    const url = new URL(request.url ?? "/", "https://example.com");
+    const memberId = url.searchParams.get("member_id");
     const db = getSupabase();
+
+    if (memberId) {
+      const profile = await getMemberProfile(db, memberId);
+      sendJson(response, 200, { ok: true, profile });
+      return;
+    }
+
     const [registrations, profiles] = await Promise.all([
       listRegistrations(db),
       listMemberProfiles(db).catch(() => [])

@@ -287,7 +287,7 @@ export async function loadMemberProfile() {
 
   try {
     const [profile, tickets, proof, activity, stats] = await Promise.all([
-      fetchJson(`/api/web/profiles?member_id=${encodeURIComponent(memberId)}`).catch((err) => ({ error: err })),
+      fetchJson(`/api/web/members?member_id=${encodeURIComponent(memberId)}`).catch((err) => ({ error: err })),
       fetchJson(`/api/web/support-tickets?${ticketsQs.toString()}`).catch((err) => ({ error: err })),
       fetchJson(`/api/web/proof-submissions?${proofQs.toString()}`).catch((err) => ({ error: err })),
       fetchJson(`/api/web/activity?${activityQs.toString()}`).catch((err) => ({ error: err })),
