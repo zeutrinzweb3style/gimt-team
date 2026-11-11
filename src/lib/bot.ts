@@ -49,6 +49,7 @@ import {
   sendTeamGroupMessageWithResult
 } from "./group-notifications.js";
 import { getTeamMember, TEAM_SCHEDULE, type TeamMember } from "./team-schedule.js";
+import { getStorage, type StorageClient } from "./storage.js";
 import { answerCallbackQuery, copyMessage, deleteMessage, downloadFile, editMessageText, getChatMember, getFile, sendMessage, type SentTelegramMessage } from "./telegram.js";
 import type { TelegramCallbackQuery, TelegramChat, TelegramChatMemberUpdated, TelegramMessage, TelegramUpdate, TelegramUser } from "./telegram-types.js";
 import { getSupportMode, isTeamInboxEnabled, TEAM_INBOX_PRIMARY_GRACE_MINUTES } from "./config.js";
@@ -742,7 +743,7 @@ function supportMessageText(message: TelegramMessage): string {
 }
 
 async function saveTelegramPhotoAttachments(
-  db: SupabaseRestClient,
+  storage: StorageClient,
   bucket: string,
   objectPathPrefix: string,
   message: TelegramMessage,
@@ -779,13 +780,13 @@ async function saveTelegramPhotoAttachments(
     const objectPath = `${objectPathPrefix}/${message.message_id}/${largestPhoto.file_unique_id ?? largestPhoto.file_id}.${extension}`;
     const contentType = downloaded.contentType || contentTypeForExtension(extension);
 
-    await db.uploadObject(bucket, objectPath, downloaded.bytes, contentType);
+    await storage.uploadObject(bucket, objectPath, downloaded.bytes, contentType);
 
     return [{
       type: "photo",
       bucket,
       path: objectPath,
-      url: db.getPublicObjectUrl(bucket, objectPath),
+      url: storage.getPublicObjectUrl(bucket, objectPath),
       telegram_file_id: largestPhoto.file_id,
       telegram_file_unique_id: largestPhoto.file_unique_id,
       file_size: telegramFile.file_size ?? largestPhoto.file_size,
@@ -802,12 +803,11 @@ async function saveTelegramPhotoAttachments(
 }
 
 async function saveSupportTicketAttachments(
-  db: SupabaseRestClient,
   ticketId: string,
   message: TelegramMessage
 ): Promise<SupportTicketAttachment[]> {
   return saveTelegramPhotoAttachments(
-    db,
+    getStorage(),
     SUPPORT_TICKET_ATTACHMENT_BUCKET,
     ticketId,
     message,
@@ -816,13 +816,12 @@ async function saveSupportTicketAttachments(
 }
 
 async function saveProofOfWorkAttachments(
-  db: SupabaseRestClient,
   memberId: string,
   workDateUtc: string,
   message: TelegramMessage
 ): Promise<SupportTicketAttachment[]> {
   return saveTelegramPhotoAttachments(
-    db,
+    getStorage(),
     PROOF_OF_WORK_ATTACHMENT_BUCKET,
     `${memberId}/${workDateUtc}`,
     message,
@@ -894,7 +893,7 @@ async function recordCustomerTicketFollowUp(
   user: TelegramUser
 ): Promise<void> {
   const messageDate = message.date ? new Date(message.date * 1000) : new Date();
-  const attachments = await saveSupportTicketAttachments(db, ticket.id, message);
+  const attachments = await saveSupportTicketAttachments(ticket.id, message);
   await recordSupportTicketMessage(db, {
     ticket_id: ticket.id,
     telegram_chat_id: message.chat.id,
@@ -1625,7 +1624,7 @@ async function recordTeamTicketReplyIfReferenced(
   if (!ticket) return;
 
   const messageDate = message.date ? new Date(message.date * 1000) : new Date();
-  const attachments = await saveSupportTicketAttachments(db, ticket.id, message);
+  const attachments = await saveSupportTicketAttachments(ticket.id, message);
   await recordSupportTicketMessage(db, {
     ticket_id: ticket.id,
     telegram_chat_id: message.chat.id,
@@ -1790,7 +1789,7 @@ async function openSupportTicket(
     closed_at: null
   });
 
-  const attachments = await saveSupportTicketAttachments(db, ticket.id, message);
+  const attachments = await saveSupportTicketAttachments(ticket.id, message);
 
   await recordSupportTicketMessage(db, {
     ticket_id: ticket.id,
@@ -1884,7 +1883,7 @@ async function handleAiSupportMessage(
     closed_at: null
   });
 
-  const attachments = await saveSupportTicketAttachments(db, ticket.id, message);
+  const attachments = await saveSupportTicketAttachments(ticket.id, message);
   await recordSupportTicketMessage(db, {
     ticket_id: ticket.id,
     telegram_chat_id: message.chat.id,
@@ -1925,7 +1924,7 @@ async function handleAiSupportTicketFollowUp(
   }
 
   const messageDate = message.date ? new Date(message.date * 1000) : new Date();
-  const attachments = await saveSupportTicketAttachments(db, ticket.id, message);
+  const attachments = await saveSupportTicketAttachments(ticket.id, message);
   await recordSupportTicketMessage(db, {
     ticket_id: ticket.id,
     telegram_chat_id: message.chat.id,
@@ -2409,7 +2408,7 @@ async function handleStatefulReply(
 
     await clearConversationState(db, user.id);
 
-    const attachments = await saveProofOfWorkAttachments(db, registration.member_id, window.workDateUtc, message);
+    const attachments = await saveProofOfWorkAttachments(registration.member_id, window.workDateUtc, message);
 
     // Already submitted for this work date: append the new screenshots/links/text
     // to the existing submission instead of rejecting it.
@@ -2780,7 +2779,7 @@ async function appendProofOfWorkMediaGroupAttachment(
   }
   if (!submission) return false;
 
-  const attachments = await saveProofOfWorkAttachments(db, submission.member_id, submission.work_date_utc, message);
+  const attachments = await saveProofOfWorkAttachments(submission.member_id, submission.work_date_utc, message);
   if (!attachments.length) return true;
 
   const mergedAttachments = mergeProofAttachments(submission.attachments, attachments);
