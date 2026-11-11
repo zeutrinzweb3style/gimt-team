@@ -1065,3 +1065,100 @@ body.home-welcome-mode #last-updated {
   box-shadow: 0 14px 28px rgba(13 148 136 / 0.3);
 }
 .home-continue-btn:focus-visible { outline: 3px solid rgb(45 212 191); outline-offset: 3px; }
+
+
+/* Archived Proof of Work summaries within the existing dashboard proof tab. */
+.proof-reports-panel {
+  margin-bottom: 20px;
+  padding: 18px;
+  border: 1px solid rgb(153 246 228);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(240, 253, 250, 0.95), rgba(239, 246, 255, 0.88));
+}
+.dark .proof-reports-panel {
+  border-color: rgb(15 118 110 / 0.55);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 40, 52, 0.82));
+}
+.proof-report-tool-btn,
+.proof-report-mode,
+.proof-report-open {
+  border: 1px solid rgb(203 213 225);
+  border-radius: 9999px;
+  padding: 7px 12px;
+  background: white;
+  color: rgb(51 65 85);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dark .proof-report-tool-btn,
+.dark .proof-report-mode,
+.dark .proof-report-open {
+  border-color: rgb(71 85 105);
+  background: rgb(15 23 42);
+  color: rgb(226 232 240);
+}
+.proof-report-mode.is-active {
+  border-color: rgb(13 148 136);
+  background: rgb(13 148 136);
+  color: white;
+}
+.proof-report-card {
+  padding: 16px;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 14px;
+  background: white;
+}
+.dark .proof-report-card,
+.dark .proof-report-week {
+  border-color: rgb(51 65 85);
+  background: rgb(15 23 42);
+}
+.proof-report-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.proof-report-metrics span {
+  padding: 5px 9px;
+  border-radius: 9999px;
+  background: rgb(240 253 250);
+  color: rgb(15 118 110);
+  font-size: 11px;
+  font-weight: 700;
+}
+.dark .proof-report-metrics span {
+  background: rgb(19 78 74 / 0.48);
+  color: rgb(153 246 228);
+}
+.proof-report-member-list {
+  display: grid;
+  gap: 6px;
+}
+.proof-report-member-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgb(248 250 252);
+  font-size: 12px;
+}
+.dark .proof-report-member-row { background: rgb(30 41 59 / 0.72); }
+.proof-report-week {
+  padding: 12px;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 12px;
+  background: rgb(248 250 252);
+}
+.proof-report-week summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+@media (max-width: 640px) {
+  .proof-reports-panel { padding: 14px; }
+  .proof-report-member-row { grid-template-columns: 1fr auto; }
+  .proof-report-member-row > :last-child { grid-column: 2; }
+}

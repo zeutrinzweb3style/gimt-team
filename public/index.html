@@ -187,6 +187,28 @@
 
       <!-- Proof of Work -->
       <section data-tab-panel="proof" class="section-card p-3 sm:p-4">
+        <div id="proof-reports" class="proof-reports-panel">
+          <div class="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[0.18em] text-teal-700 dark:text-teal-300">Saved team updates</p>
+              <h2 class="mt-1 text-lg font-bold">Weekly &amp; Monthly Proof Reports</h2>
+              <p class="mt-1 max-w-3xl text-xs text-slate-600 dark:text-slate-400">The external scheduler should call the weekly report endpoint every Sunday at 11:05 PM PHT and the monthly recap on the first day of the month. Weekly and monthly periods use submission time in Manila; each original work date, proof text, link, and image remains available below.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="proof-reports-copy-link" type="button" class="proof-report-tool-btn">Copy report link</button>
+              <button id="proof-reports-refresh" type="button" class="proof-report-tool-btn">Refresh reports</button>
+            </div>
+          </div>
+          <div class="proof-report-controls mt-4">
+            <div class="flex flex-wrap gap-2" role="tablist" aria-label="Proof report period">
+              <button type="button" class="proof-report-mode is-active" data-proof-report-mode="weekly" aria-pressed="true">Weekly updates</button>
+              <button type="button" class="proof-report-mode" data-proof-report-mode="monthly" aria-pressed="false">Monthly recaps</button>
+            </div>
+            <div id="proof-reports-list" class="mt-3 space-y-3" aria-live="polite">
+              <p class="text-sm text-slate-500 dark:text-slate-400">Loading saved reports…</p>
+            </div>
+          </div>
+        </div>
         <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
             <h2 class="text-base font-semibold">Proof of Work Submissions</h2>

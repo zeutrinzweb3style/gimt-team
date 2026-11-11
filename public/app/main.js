@@ -10,6 +10,7 @@ import { closeMemberDetail, openMemberDetail } from "./member-detail.js";
 import { defaultMemberRange, getMemberUrlParams, loadMemberProfile, openMemberProfile, renderMemberProfileHeader, showMemberTabButton, updateMemberUrlParams } from "./member-profile.js";
 import { loadMembers } from "./members.js";
 import { loadProof } from "./proof.js";
+import { initProofReports } from "./proof-reports.js";
 import { state } from "./state.js";
 import { loadStats, setStatsGrouping } from "./stats.js";
 import { initDefaultDates, refreshCurrent, switchTab, toggleWeek } from "./tabs.js";
@@ -34,7 +35,14 @@ export async function init() {
   for (const btn of $all("[data-menu-tab]")) {
     btn.addEventListener("click", () => switchTab(btn.dataset.menuTab));
   }
+  initProofReports();
   $("#refresh-btn").addEventListener("click", refreshCurrent);
+  $("#proof-reports-copy-link").addEventListener("click", () => {
+    const reportUrl = new URL(window.location.href);
+    reportUrl.search = "";
+    reportUrl.searchParams.set("reports", "1");
+    copyTextToButton(reportUrl.href, $("#proof-reports-copy-link"));
+  });
   $("#home-continue").addEventListener("click", () => {
     document.body.dataset.homeContinued = "true";
     document.body.classList.add("member-review-flow");
@@ -283,6 +291,7 @@ export async function init() {
   // so a shared report link opens straight to that report.
   const initialIssue = getIssueUrlParams();
   const initialUrl = getMemberUrlParams();
+  const initialReports = new URLSearchParams(window.location.search).get("reports") === "1";
   if (initialIssue.category) {
     const range = (initialIssue.from && initialIssue.to)
       ? { from: initialIssue.from, to: initialIssue.to }
@@ -319,6 +328,10 @@ export async function init() {
     }
     showMemberTabButton(true);
     switchTab("member");
+  } else if (initialReports) {
+    // ?reports=1 opens the dashboard archive without changing the clean member-review flow.
+    document.body.dataset.homeContinued = "true";
+    switchTab("proof");
   } else {
     switchTab("home");
   }
