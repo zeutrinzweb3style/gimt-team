@@ -2030,8 +2030,9 @@ async function loadCommunitySummary() {
   state.communitySummary.loading = true;
   renderCommunitySummary();
   try {
-    const result = await fetchJson(`/api/web/community-summaries?date=${encodeURIComponent(date)}`);
-    state.communitySummary.data = result.summaries?.[0] ?? null;
+    const result = await fetchJson("/api/web/activity?action=COMMUNITY_CONCERNS_DAILY_SUMMARY&limit=400");
+    const record = (result.activities || []).find((item) => item.metadata?.summary_date === date);
+    state.communitySummary.data = record?.metadata?.summary ?? null;
   } catch (error) {
     state.communitySummary.data = null;
     $("#community-summary-content").innerHTML = `<div class="rounded-xl border border-rose-200 dark:border-rose-900 p-4 text-sm text-rose-700 dark:text-rose-300">Could not load this record: ${escapeHtml(error.message || "Unknown error")}</div>`;
