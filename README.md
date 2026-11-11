@@ -40,6 +40,14 @@ SUPPORT_MODE=old
 CRON_STALE_AFTER_MINUTES=45
 # Optional timekeeping-cron watchdog: minimum hours between repeated stale alerts
 CRON_STALE_REALERT_HOURS=6
+# Optional object storage backend for photo attachments: supabase (default) or r2
+STORAGE_DRIVER=supabase
+# Required only when STORAGE_DRIVER=r2 (Cloudflare R2, S3-compatible)
+R2_ACCOUNT_ID=
+R2_BUCKET=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_PUBLIC_BASE_URL=
 ```
 
 `SUPABASE_ANON_KEY` is supported only as a fallback, but `SUPABASE_SERVICE_ROLE_KEY` is recommended because the bot runs server-side and performs trusted writes.
@@ -61,6 +69,22 @@ Run the SQL in [`supabase/schema.sql`](supabase/schema.sql) in your Supabase SQL
 When upgrading an existing deployment, re-running `supabase/schema.sql` will add the `public.group_action_messages` table that tracks team-group prompt and ack message IDs so old prompts can be cleaned up automatically. It will also add `public.telegram_groups`, which stores each tracked Telegram group's actual title so the web dashboard can show names such as GIMT, GoodDollar, or Support instead of only numeric chat IDs.
 
 Re-run `supabase/schema.sql` after deploying the support-ticket workflow as well. It adds `public.support_tickets`, `public.support_ticket_messages`, and `public.support_ticket_events`; these tables are separate from `activity_logs`, `time_logs`, `proof_of_work_submissions`, and `group_message_stats`.
+
+## Object storage (photo attachments)
+
+Proof-of-work and support-ticket photos are stored through a small storage abstraction (`src/lib/storage.ts`) so the backend can be swapped without touching the bot code. `STORAGE_DRIVER` selects it:
+
+- `supabase` (default) — objects go to Supabase Storage buckets (`proof-of-work-attachments`, `support-ticket-attachments`). No extra setup beyond `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
+- `r2` — objects go to Cloudflare R2 (S3-compatible). The logical buckets are mapped to key prefixes inside the single `R2_BUCKET`, and public URLs are served from `R2_PUBLIC_BASE_URL`.
+
+### Enabling R2
+
+1. Create an R2 bucket in the Cloudflare dashboard and note the account ID.
+2. Create an R2 API token (Access Key ID + Secret Access Key) with object read/write on that bucket.
+3. Make the bucket publicly readable: either enable the `r2.dev` public bucket URL or attach a custom domain. Use that as `R2_PUBLIC_BASE_URL`.
+4. Set `STORAGE_DRIVER=r2` plus `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_PUBLIC_BASE_URL` in Vercel (and Netlify if you use it).
+
+Requests are signed with AWS Signature V4 in `src/lib/sigv4.ts` using WebCrypto, so no runtime dependency is added. Switching the driver only affects new uploads; existing attachments keep working because each record stores its own absolute `url`.
 
 ## Telegram setup
 
