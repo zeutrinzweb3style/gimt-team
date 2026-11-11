@@ -112,7 +112,7 @@ The primary UX is buttons. `/start`, `/menu`, and `/help` are kept only as fallb
 
 ## Web dashboard
 
-The dashboard entrypoint lives at the repository root (`index.html` and `app.js`) and is served as a static site at the deployment root URL. It calls these read-only JSON endpoints under [`api/web/`](api/web):
+The dashboard lives in the [`public/`](public) folder and is served as a static site at the deployment root URL. It calls these read-only JSON endpoints under [`api/web/`](api/web):
 
 | Endpoint | Purpose |
 | --- | --- |
