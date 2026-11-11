@@ -1,3 +1,13 @@
 {
-  "crons": []
+  "crons": [],
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/public/index.html"
+    },
+    {
+      "source": "/app.js",
+      "destination": "/public/app.js"
+    }
+  ]
 }
