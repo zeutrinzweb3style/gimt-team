@@ -7,7 +7,7 @@ import { loadCommunitySummary } from "./community-summary.js";
 import { loadIssueCategories, normalizeIssueCategory } from "./issue-categories.js";
 import { defaultIssueRange, getIssueUrlParams, loadIssueReport, openIssueReport, updateIssueUrlParams } from "./issue-report.js";
 import { closeMemberDetail, openMemberDetail } from "./member-detail.js";
-import { defaultMemberRange, getMemberUrlParams, loadMemberProfile, openMemberProfile, renderMemberProfileHeader, showMemberTabButton, updateMemberUrlParams } from "./member-profile.js";
+import { defaultMemberRange, getMemberUrlParams, initMemberProfileControls, loadMemberProfile, openMemberProfile, renderMemberProfileHeader, showMemberTabButton, updateMemberUrlParams } from "./member-profile.js";
 import { loadMembers } from "./members.js";
 import { loadProof } from "./proof.js";
 import { initProofReports } from "./proof-reports.js";
@@ -36,6 +36,7 @@ export async function init() {
     btn.addEventListener("click", () => switchTab(btn.dataset.menuTab));
   }
   initProofReports();
+  initMemberProfileControls();
   $("#refresh-btn").addEventListener("click", refreshCurrent);
   $("#proof-reports-copy-link").addEventListener("click", () => {
     const reportUrl = new URL(window.location.href);

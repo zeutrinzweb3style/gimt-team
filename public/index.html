@@ -325,7 +325,7 @@
         <p id="tickets-count" class="mt-2 text-xs text-slate-500 dark:text-slate-400"></p>
       </section>
 
-      <!-- Dedicated member review route: member identity + proof of work only. -->
+      <!-- Dedicated member review route: member identity with optional Proof/Tickets panels. -->
       <section data-tab-panel="member" class="member-review-page space-y-4">
         <div class="member-profile-card">
           <button type="button" id="member-back-btn" class="member-back-link">← Back to all members</button>
@@ -341,13 +341,26 @@
             </div>
           </div>
         </div>
-        <div class="member-section member-proof-section" data-member-section="proof" id="member-section-proof">
+        <div class="member-evidence-actions" aria-label="Member work and ticket history">
+          <button type="button" id="member-proof-toggle" class="member-evidence-toggle" aria-expanded="false" aria-controls="member-proof-panel">
+            <span>Proof of Work</span><span class="member-evidence-count" id="member-proof-count">…</span>
+          </button>
+          <button type="button" id="member-tickets-toggle" class="member-evidence-toggle" aria-expanded="false" aria-controls="member-tickets-panel">
+            <span>Tickets</span><span class="member-evidence-count" id="member-tickets-count">…</span>
+          </button>
+        </div>
+        <section class="member-section member-evidence-panel hidden" id="member-proof-panel" hidden>
           <div class="member-proof-heading">
             <div><h3>Proof of Work Submissions</h3><p>Review this member’s submitted work, links, and screenshots.</p></div>
-            <span id="member-proof-count" class="section-count">0</span>
           </div>
-          <div id="member-proof-list"><p class="member-empty">Loading…</p></div>
-        </div>
+          <div id="member-proof-list"><p class="member-empty">Click Proof of Work to load submissions.</p></div>
+        </section>
+        <section class="member-section member-evidence-panel hidden" id="member-tickets-panel" hidden>
+          <div class="member-proof-heading">
+            <div><h3>Support Tickets &amp; Conversations</h3><p>Ticket contents and message history stay collapsed until you open a ticket.</p></div>
+          </div>
+          <div id="member-tickets-list"><p class="member-empty">Click Tickets to load this member’s ticket history.</p></div>
+        </section>
       </section>
       <!-- Repeated Issue Report (own shareable URL via ?issue=...&from=...&to=...) -->
       <section data-tab-panel="issue-report" class="section-card p-3 sm:p-4">

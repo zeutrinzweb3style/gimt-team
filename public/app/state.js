@@ -106,6 +106,13 @@ export const state = {
     profile: null,
     tickets: [],
     proof: [],
+    dataKey: "",
+    proofCount: null,
+    ticketsCount: null,
+    proofOpen: false,
+    ticketsOpen: false,
+    proofLoaded: false,
+    ticketsLoaded: false,
     activity: [],
     groupStats: []
   },

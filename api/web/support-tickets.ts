@@ -37,7 +37,8 @@ export default async function handler(request: any, response: any) {
     const to = url.searchParams.get("to");
     const memberId = url.searchParams.get("member_id");
     const search = (url.searchParams.get("q") || "").trim().toLowerCase();
-    const rowLimit = parseInteger(url.searchParams.get("limit"), 200, 1, 1000);
+    const countOnly = url.searchParams.get("count_only") === "1";
+    const rowLimit = parseInteger(url.searchParams.get("limit"), countOnly ? 1000 : 200, 1, 1000);
 
     const filters: [string, string][] = [order("created_at", false), limit(rowLimit)];
     if (assignedMemberId) filters.push(eq("assigned_member_id", assignedMemberId));
@@ -49,8 +50,16 @@ export default async function handler(request: any, response: any) {
 
     const db = getSupabase();
     const tickets = await db.select<SupportTicket>("support_tickets", params(...filters));
-    const messages = await listSupportTicketMessages(db, tickets.map((ticket) => ticket.id));
-    const chatIds = Array.from(new Set(tickets.map((ticket) => ticket.telegram_chat_id).filter(Boolean)));
+    const memberTickets = memberId
+      ? tickets.filter((ticket) => [ticket.assigned_member_id, ticket.scheduled_member_id, ticket.covered_for_member_id].some((value) => value === memberId))
+      : tickets;
+    if (countOnly) {
+      sendJson(response, 200, { ok: true, count: memberTickets.length });
+      return;
+    }
+
+    const messages = await listSupportTicketMessages(db, memberTickets.map((ticket) => ticket.id));
+    const chatIds = Array.from(new Set(memberTickets.map((ticket) => ticket.telegram_chat_id).filter(Boolean)));
     let groups: TelegramGroup[] = [];
     if (chatIds.length > 0) {
       try {
@@ -66,7 +75,7 @@ export default async function handler(request: any, response: any) {
       (acc[message.ticket_id] ??= []).push(message);
       return acc;
     }, {});
-    const ticketsWithMessages = tickets.map((ticket) => {
+    const ticketsWithMessages = memberTickets.map((ticket) => {
       const ticketMessages = messagesByTicket[ticket.id] ?? [];
       const visibleMessages = ticketMessages.filter((message) => message.sender_type !== "bot");
       return {

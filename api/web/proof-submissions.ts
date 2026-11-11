@@ -32,7 +32,8 @@ export default async function handler(request: any, response: any) {
     const to = url.searchParams.get("to");
     const submittedFrom = url.searchParams.get("submitted_from");
     const submittedTo = url.searchParams.get("submitted_to");
-    const rowLimit = parseInteger(url.searchParams.get("limit"), 100, 1, 500);
+    const countOnly = url.searchParams.get("count_only") === "1";
+    const rowLimit = parseInteger(url.searchParams.get("limit"), countOnly ? 1000 : 100, 1, countOnly ? 1000 : 500);
     const offset = parseInteger(url.searchParams.get("offset"), 0, 0, 50000);
 
     const db = getSupabase();
@@ -56,6 +57,11 @@ export default async function handler(request: any, response: any) {
     if (submittedTo) filters.push(lteParam("submitted_at_utc", submittedTo));
 
     const rows = await db.select<ProofOfWorkSubmission>("proof_of_work_submissions", params(...filters));
+
+    if (countOnly) {
+      sendJson(response, 200, { ok: true, count: rows.length });
+      return;
+    }
 
     sendJson(response, 200, { ok: true, count: rows.length, submissions: rows });
   } catch (error) {
