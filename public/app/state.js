@@ -8,6 +8,7 @@ export const ACTION_LABEL = {
   shift_swap_requested: "Shift Swap Requested",
   shift_swap_response: "Shift Swap Response",
   registered: "Registered",
+  PROFILE_UPDATED: "Profile Updated",
   REPEATED_ISSUE_REPORT: "Repeated Issue Report",
   DAILY_REPORT: "Daily Report"
 };
@@ -22,6 +23,7 @@ export const ACTION_PILL = {
   shift_swap_requested: "pill-slate",
   shift_swap_response: "pill-slate",
   registered: "pill-slate",
+  PROFILE_UPDATED: "pill-blue",
   REPEATED_ISSUE_REPORT: "pill-blue",
   DAILY_REPORT: "pill-blue"
 };
@@ -101,6 +103,7 @@ export const state = {
     to: "",
     view: "",
     loading: false,
+    profile: null,
     tickets: [],
     proof: [],
     activity: [],

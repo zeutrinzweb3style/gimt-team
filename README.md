@@ -70,6 +70,14 @@ When upgrading an existing deployment, re-running `supabase/schema.sql` will add
 
 Re-run `supabase/schema.sql` after deploying the support-ticket workflow as well. It adds `public.support_tickets`, `public.support_ticket_messages`, and `public.support_ticket_events`; these tables are separate from `activity_logs`, `time_logs`, `proof_of_work_submissions`, and `group_message_stats`.
 
+Re-run `supabase/schema.sql` again to enable member bio-link profiles. It adds `public.member_profiles` (one row per member with `headline`, `bio`, `avatar`, and a JSONB `links` array). The statement is `create table if not exists`, so re-running the whole file is safe.
+
+## Member bio-link profiles
+
+Each team member gets a public bio-link page: photo, headline, short bio, and an unlimited stack of links. Members edit it from the bot's **👤 My Profile** button (set/update photo, edit headline, edit bio, add link, remove link, view public link). The dashboard shows the same content — a **Team Directory** of profile cards on Home and a bio-link hero at the top of each member page, with anchor chips to jump between tickets, proof, activity, and group messages.
+
+Profile photos upload through the same storage abstraction, into the `member-profile-avatars` logical bucket (Supabase bucket or R2 key prefix, depending on `STORAGE_DRIVER`).
+
 ## Object storage (photo attachments)
 
 Proof-of-work and support-ticket photos are stored through a small storage abstraction (`src/lib/storage.ts`) so the backend can be swapped without touching the bot code. `STORAGE_DRIVER` selects it:

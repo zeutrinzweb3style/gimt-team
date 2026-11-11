@@ -1,5 +1,6 @@
 import { fmtShiftLabel, memberById } from "./members.js";
 import { renderProofCard } from "./proof.js";
+import { renderAvatar, renderBioLinks } from "./profile.js";
 import { ACTION_LABEL, ACTION_PILL, MEMBER_VIEWS, TICKET_STATUS_LABEL, TICKET_STATUS_PILL, normalizeMemberView, state } from "./state.js";
 import { switchTab } from "./tabs.js";
 import { renderTicketMessageAttachments, ticketDisplayCode, ticketGroupName } from "./tickets.js";
@@ -61,8 +62,40 @@ export function setMemberProfileLoading(message = "Loading\u2026") {
 export function renderMemberProfileHeader() {
   const { memberId, from, to } = state.memberProfile;
   const member = memberById(memberId);
+  const profile = state.memberProfile.profile;
   const name = member?.name || memberId || "\u2014";
-  $("#member-profile-name").textContent = name;
+
+  const hero = $("#member-profile-hero");
+  if (hero) {
+    const headline = String(profile?.headline || "").trim();
+    const bio = String(profile?.bio || "").trim();
+    hero.innerHTML = `
+      <div class="bio-hero-avatar">${renderAvatar({ name, avatarUrl: profile?.avatar?.url, size: "xl" })}</div>
+      <div class="bio-hero-body">
+        <h2 id="member-profile-name" class="bio-hero-name">${escapeHtml(name)}</h2>
+        ${headline ? `<p class="bio-hero-headline">${escapeHtml(headline)}</p>` : ""}
+        <p class="bio-hero-meta">${escapeHtml(buildMemberMeta(member, memberId))}</p>
+        ${bio ? `<p class="bio-hero-bio">${escapeHtml(bio)}</p>` : ""}
+        ${renderBioLinks(profile?.links)}
+        ${profile ? "" : '<p class="bio-hero-empty">No profile details yet. The member can add a photo, headline, bio, and links from the bot\'s 👤 My Profile button.</p>'}
+      </div>
+    `;
+  }
+
+  const nameEl = $("#member-profile-name");
+  if (nameEl) nameEl.textContent = name;
+
+  const metaEl = $("#member-profile-meta");
+  if (metaEl) metaEl.textContent = buildMemberMeta(member, memberId);
+
+  $("#member-profile-range-label").textContent =
+    from && to ? `Showing data from ${fmtDateHuman(from)} to ${fmtDateHuman(to)} (UTC)` : "\u2014";
+  $("#member-from").value = from;
+  $("#member-to").value = to;
+  applyMemberProfileView();
+}
+
+function buildMemberMeta(member, memberId) {
   const metaPieces = [];
   if (member) {
     metaPieces.push(fmtShiftLabel(member));
@@ -72,12 +105,7 @@ export function renderMemberProfileHeader() {
   } else if (memberId) {
     metaPieces.push(`Unknown member id: ${memberId}`);
   }
-  $("#member-profile-meta").textContent = metaPieces.filter(Boolean).join(" \u00b7 ") || "\u2014";
-  $("#member-profile-range-label").textContent =
-    from && to ? `Showing data from ${fmtDateHuman(from)} to ${fmtDateHuman(to)} (UTC)` : "\u2014";
-  $("#member-from").value = from;
-  $("#member-to").value = to;
-  applyMemberProfileView();
+  return metaPieces.filter(Boolean).join(" \u00b7 ") || "\u2014";
 }
 
 // Show only the section matching the active ?view=, or all sections when none.
@@ -101,6 +129,8 @@ export function applyMemberProfileView() {
   for (const btn of $all(".member-share-btn[data-share-view]")) {
     btn.classList.toggle("is-active", btn.dataset.shareView === view);
   }
+  const anchorBar = $(".member-anchor-bar");
+  if (anchorBar) anchorBar.classList.toggle("hidden", Boolean(view));
 }
 
 export function renderMemberProfileTickets(rows) {
@@ -256,12 +286,16 @@ export async function loadMemberProfile() {
   if (to) statsQs.set("to", to);
 
   try {
-    const [tickets, proof, activity, stats] = await Promise.all([
+    const [profile, tickets, proof, activity, stats] = await Promise.all([
+      fetchJson(`/api/web/profiles?member_id=${encodeURIComponent(memberId)}`).catch((err) => ({ error: err })),
       fetchJson(`/api/web/support-tickets?${ticketsQs.toString()}`).catch((err) => ({ error: err })),
       fetchJson(`/api/web/proof-submissions?${proofQs.toString()}`).catch((err) => ({ error: err })),
       fetchJson(`/api/web/activity?${activityQs.toString()}`).catch((err) => ({ error: err })),
       fetchJson(`/api/web/group-stats?${statsQs.toString()}`).catch((err) => ({ error: err }))
     ]);
+
+    state.memberProfile.profile = profile.error ? null : (profile.profile || null);
+    renderMemberProfileHeader();
 
     if (tickets.error) {
       $("#member-tickets-list").innerHTML = `<p class="text-sm text-red-600 dark:text-red-400">Failed: ${escapeHtml(tickets.error.message || "Unknown error")}</p>`;
@@ -309,6 +343,7 @@ export function openMemberProfile(memberId, opts = {}) {
   state.memberProfile.from = range.from;
   state.memberProfile.to = range.to;
   state.memberProfile.view = view;
+  state.memberProfile.profile = null;
   updateMemberUrlParams({ memberId, from: range.from, to: range.to, view, replace: Boolean(opts.replace) });
   showMemberTabButton(true);
   switchTab("member");

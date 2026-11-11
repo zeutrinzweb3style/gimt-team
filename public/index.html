@@ -131,8 +131,8 @@
         <div class="mt-6">
           <div class="flex items-end justify-between gap-3 flex-wrap mb-3">
             <div>
-              <h3 class="text-base font-semibold text-slate-950 dark:text-white">Team Members</h3>
-              <p class="text-xs text-slate-500 dark:text-slate-400">Pick a member to open their dedicated page with ticket history and proof of work. Each page has its own shareable link with a date range.</p>
+              <h3 class="text-base font-semibold text-slate-950 dark:text-white">Team Directory</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Each card is a member's bio-link profile — photo, headline, and their links. Open a profile for ticket history, proof of work, activity, and group messages.</p>
             </div>
             <p class="text-[11px] text-slate-500 dark:text-slate-400">Default range: last 7 days · customize from the page</p>
           </div>
@@ -351,15 +351,20 @@
       <!-- Member Profile (per-member focused view via ?member=...&from=...&to=...) -->
       <section data-tab-panel="member" class="space-y-4">
         <div class="member-profile-card">
-          <div class="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <button type="button" id="member-back-btn" class="text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-300 hover:underline mb-2">
-                ← Back to all members
-              </button>
-              <h2 id="member-profile-name" class="text-2xl sm:text-3xl font-black tracking-tight text-slate-950 dark:text-white">—</h2>
-              <p id="member-profile-meta" class="mt-1 text-sm text-slate-600 dark:text-slate-300">—</p>
-              <p id="member-profile-range-label" class="mt-2 text-xs text-slate-500 dark:text-slate-400">—</p>
+          <button type="button" id="member-back-btn" class="member-back-link">
+            ← Back to all members
+          </button>
+
+          <div id="member-profile-hero" class="bio-hero">
+            <div class="bio-hero-avatar"><span class="avatar avatar-xl avatar-mono"><span>—</span></span></div>
+            <div class="bio-hero-body">
+              <h2 id="member-profile-name" class="bio-hero-name">—</h2>
+              <p id="member-profile-meta" class="bio-hero-meta">—</p>
             </div>
+          </div>
+
+          <div class="member-profile-controls">
+            <p id="member-profile-range-label" class="member-range-label">—</p>
             <div class="flex items-end gap-2 flex-wrap mobile-stack">
               <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                 From
@@ -389,28 +394,35 @@
           </div>
         </div>
 
-        <div class="member-section" data-member-section="tickets">
+        <nav class="member-anchor-bar" aria-label="Profile sections">
+          <a class="member-anchor" href="#member-section-tickets">Tickets</a>
+          <a class="member-anchor" href="#member-section-proof">Proof</a>
+          <a class="member-anchor" href="#member-section-activity">Activity</a>
+          <a class="member-anchor" href="#member-section-stats">Group Messages</a>
+        </nav>
+
+        <div class="member-section" data-member-section="tickets" id="member-section-tickets">
           <h3>Support Tickets &amp; Conversations <span id="member-tickets-count" class="section-count">0</span></h3>
           <div id="member-tickets-list">
             <p class="member-empty">Loading…</p>
           </div>
         </div>
 
-        <div class="member-section" data-member-section="proof">
+        <div class="member-section" data-member-section="proof" id="member-section-proof">
           <h3>Proof of Work Submissions <span id="member-proof-count" class="section-count">0</span></h3>
           <div id="member-proof-list">
             <p class="member-empty">Loading…</p>
           </div>
         </div>
 
-        <div class="member-section" data-member-section="activity">
+        <div class="member-section" data-member-section="activity" id="member-section-activity">
           <h3>Activity Log (Time In / Out / Excuses / Swaps) <span id="member-activity-count" class="section-count">0</span></h3>
           <div id="member-activity-list">
             <p class="member-empty">Loading…</p>
           </div>
         </div>
 
-        <div class="member-section" data-member-section="stats">
+        <div class="member-section" data-member-section="stats" id="member-section-stats">
           <h3>Group Messages <span id="member-messages-count" class="section-count">0</span></h3>
           <div id="member-messages-list">
             <p class="member-empty">Loading…</p>

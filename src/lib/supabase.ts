@@ -234,6 +234,20 @@ export type SupportTicketAttachment = {
   content_type?: string | null;
 };
 
+export type MemberProfileLink = {
+  label: string;
+  url: string;
+};
+
+export type MemberProfile = {
+  member_id: string;
+  headline: string | null;
+  bio: string | null;
+  avatar: SupportTicketAttachment | null;
+  links: MemberProfileLink[];
+  updated_at: string;
+};
+
 export type SupportTicketMessage = {
   id: string;
   ticket_id: string;
