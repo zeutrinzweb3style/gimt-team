@@ -6,7 +6,7 @@ Alongside the bot, the same Vercel deployment serves a read-only dashboard at th
 
 - **Activity History** — sortable spreadsheet view of `activity_logs` (Time In, Time Out, Proof Submitted, Excuse, Absent, Shift Swap, etc.) with member + action filters and a search box.
 - **Stats** — group message stats per member (`group_message_stats`) with date-range filters and totals.
-- **Proof of Work** — full content of every proof-of-work submission (`proof_of_work_submissions`).
+- **Proof of Work** — saved weekly/monthly report summaries plus the full content of every proof-of-work submission (`proof_of_work_submissions`).
 
 The dashboard is public read-only; all attendance actions (Time In, Time Out, Proof of Work, Excuse, Absent, Shift Swap) continue to be performed in the Telegram bot itself.
 
@@ -167,6 +167,23 @@ The dashboard reads the stored history through the existing `/api/web/activity` 
 
 The existing 5-minute scheduler remains responsible only for `/api/cron/timekeeping` and the attendance reminders.
 
+## Weekly and monthly Proof of Work reports
+
+The Proof of Work dashboard includes an archive of weekly updates and monthly recaps. Open the dashboard with `?reports=1` to go directly to the Proof of Work tab; the normal welcome-to-member-review flow remains unchanged. Weekly periods are Monday through Sunday in `Asia/Manila`, grouped by each proof's `submitted_at_utc` converted to Manila time. The original `work_date_utc`, proof text, links, and image attachments remain visible when a report is expanded.
+
+Use your external scheduler for the Proof of Work archive; these report calls are not scheduled in `vercel.json`. Call the existing protected endpoint at **11:05 PM Asia/Manila every Sunday** with `?report=weekly`, and at **12:05 AM Asia/Manila on the first day of each month** with `?report=monthly`. The weekly endpoint includes the Monday–Sunday Manila week that is closing; if a delayed request arrives just after midnight Monday, it still resolves to that completed week. The monthly recap covers the previous calendar month. Monthly weeks follow Monday–Sunday calendar weeks and are clipped to the month, so a month can contain partial weeks and up to six week buckets.
+
+Example schedule targets (replace the deployment host):
+
+```text
+https://YOUR-VERCEL-DOMAIN.vercel.app/api/cron/daily-report?report=weekly
+https://YOUR-VERCEL-DOMAIN.vercel.app/api/cron/daily-report?report=monthly
+```
+
+Configure the scheduler with `Authorization: Bearer <CRON_SECRET>` and set the same `CRON_SECRET` in the deployment. If your scheduler cannot send headers, append `&secret=<CRON_SECRET>` to each URL instead. Repeated calls are safe: each completed week/month is deduplicated through the existing `cron_events` key.
+
+Reports are deterministic summaries of saved records: submission totals, members with submissions, late counts, and week-by-week totals. The original submissions are shown below the aggregate; no AI summary is generated. Snapshots are stored in `activity_logs` and deduplicated with the existing unique `cron_events` key. This reuses the current cron and proof-submission API routes; no new Vercel function or SQL table is required.
+
 ## Web dashboard
 
 The dashboard lives in the [`public/`](public) folder and is served as a static site at the deployment root URL. It calls these read-only JSON endpoints under [`api/web/`](api/web):
@@ -184,10 +201,12 @@ The frontend is a plain ES-module SPA with no build step. `public/index.html` lo
 
 ## Cron routes
 
-Vercel cron runs (via `vercel.json`, Hobby-compatible daily schedules only):
+Vercel cron runs (via `vercel.json`, with no schedule more frequent than once per day):
 
 - `/api/cron/daily-report` daily at 01:05 UTC to store a daily summary in activity logs.
 - `/api/cron/repeated-issue-report` daily at 01:15 UTC.
+
+Weekly and monthly Proof of Work reports are triggered by the external scheduler described above; the existing Vercel daily report schedule remains only for the daily activity summary.
 
 The every-5-minutes timekeeping job cannot run as a Vercel cron on the Hobby plan (Hobby accounts are limited to daily cron jobs), so it is triggered by a GitHub Actions workflow (`.github/workflows/timekeeping-cron.yml`) that pings `/api/cron/timekeeping` every 5 minutes. See [Timekeeping cron schedule](#timekeeping-cron-schedule) for the required repository secrets.
 

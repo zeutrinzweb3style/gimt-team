@@ -22,9 +22,15 @@ export default async function handler(request: any, response: any) {
     const action = url.searchParams.get("action");
     const rowLimit = parseInteger(url.searchParams.get("limit"), 50, 1, 200);
 
+    if (action === "PROOF_OF_WORK_WEEKLY_REPORT" || action === "PROOF_OF_WORK_MONTHLY_REPORT") {
+      sendJson(response, 200, { ok: true, count: 0, activities: [] });
+      return;
+    }
+
     const filters: [string, string][] = [order("created_at", false), limit(rowLimit)];
     if (memberId) filters.push(eq("member_id", memberId));
     if (action) filters.push(eq("action", action));
+    else filters.push(["action", "not.in.(PROOF_OF_WORK_WEEKLY_REPORT,PROOF_OF_WORK_MONTHLY_REPORT)"]);
 
     const db = getSupabase();
     const activities = await db.select<ActivityLog>("activity_logs", params(...filters));

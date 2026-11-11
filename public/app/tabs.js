@@ -3,6 +3,7 @@ import { loadCommunitySummary } from "./community-summary.js";
 import { loadIssueReport, updateIssueUrlParams } from "./issue-report.js";
 import { loadMemberProfile, showMemberTabButton, updateMemberUrlParams } from "./member-profile.js";
 import { loadProof, renderProof } from "./proof.js";
+import { loadProofReports } from "./proof-reports.js";
 import { state } from "./state.js";
 import { loadStats, renderStats } from "./stats.js";
 import { loadTicketSearch, loadTickets } from "./tickets.js";
@@ -39,7 +40,10 @@ export function refreshCurrent() {
   if (state.currentTab === "community-summary") loadCommunitySummary();
   else if (state.currentTab === "activity") loadActivity();
   else if (state.currentTab === "stats") loadStats();
-  else if (state.currentTab === "proof") loadProof();
+  else if (state.currentTab === "proof") {
+    loadProof();
+    loadProofReports();
+  }
   else if (state.currentTab === "tickets") loadTickets();
   else if (state.currentTab === "ticket-search") loadTicketSearch();
   else if (state.currentTab === "issue-report") loadIssueReport();
