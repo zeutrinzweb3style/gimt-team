@@ -57,10 +57,6 @@ export function buildSpamAckText(memberName: string, count: number): string {
 
 type ActiveAck = { messageId: number; sourceMessageId: number };
 
-// One active ack per chat, cached for the life of the instance so the common
-// "delete the ack when the next message arrives" path costs no database read.
-const activeAckCache = new Map<number, ActiveAck | null>();
-
 function ackSettingKey(chatId: number): string {
   return `spam_ack_active:${chatId}`;
 }
@@ -81,9 +77,13 @@ function parseActiveAck(raw: string | null): ActiveAck | null {
   return null;
 }
 
+/**
+ * Reads the chat's live ack from app_settings. This always hits the database:
+ * a serverless host can route the next message to a different instance, so an
+ * in-memory cache would miss an ack another instance just posted and leave it
+ * in the group. Mirrors deleteActiveSupportIntro.
+ */
 async function loadActiveAck(db: SupabaseRestClient, chatId: number): Promise<ActiveAck | null> {
-  if (activeAckCache.has(chatId)) return activeAckCache.get(chatId) ?? null;
-
   let raw: string | null = null;
   try {
     raw = await getAppSetting(db, ackSettingKey(chatId));
@@ -94,13 +94,10 @@ async function loadActiveAck(db: SupabaseRestClient, chatId: number): Promise<Ac
     return null;
   }
 
-  const ack = parseActiveAck(raw);
-  activeAckCache.set(chatId, ack);
-  return ack;
+  return parseActiveAck(raw);
 }
 
 async function storeActiveAck(db: SupabaseRestClient, chatId: number, ack: ActiveAck): Promise<void> {
-  activeAckCache.set(chatId, ack);
   try {
     await upsertAppSetting(db, ackSettingKey(chatId), JSON.stringify(ack));
   } catch (error) {
@@ -111,7 +108,6 @@ async function storeActiveAck(db: SupabaseRestClient, chatId: number, ack: Activ
 }
 
 async function clearStoredActiveAck(db: SupabaseRestClient, chatId: number): Promise<void> {
-  activeAckCache.set(chatId, null);
   try {
     await upsertAppSetting(db, ackSettingKey(chatId), "");
   } catch (error) {
@@ -123,9 +119,11 @@ async function clearStoredActiveAck(db: SupabaseRestClient, chatId: number): Pro
 
 /**
  * Deletes the chat's current spam ack. Called for every incoming message so the
- * ack disappears as soon as the next message arrives, and before posting a new
- * ack so a fresh report replaces the previous one. `incomingMessageId` guards a
- * redelivered update from deleting the ack it just produced.
+ * ack disappears as soon as the next message arrives (from any member), and
+ * before posting a new ack so a fresh report replaces the previous one.
+ * `incomingMessageId` guards a redelivered update from deleting the ack it just
+ * produced. Deletion needs the bot to be a group admin; a failure is logged so
+ * the missing admin right is visible.
  */
 export async function clearActiveSpamAck(
   db: SupabaseRestClient,
@@ -136,19 +134,31 @@ export async function clearActiveSpamAck(
   if (!ack) return;
   if (incomingMessageId !== undefined && ack.sourceMessageId === incomingMessageId) return;
 
-  await deleteMessage(chatId, ack.messageId);
+  const deleted = await deleteMessage(chatId, ack.messageId);
+  if (!deleted) {
+    console.warn(
+      `Could not delete spam ack ${ack.messageId} in chat ${chatId}. The bot may not be an admin in that group.`
+    );
+  }
   await clearStoredActiveAck(db, chatId);
 }
 
-async function postAck(
-  db: SupabaseRestClient,
-  chatId: number,
-  sourceMessageId: number,
-  text: string,
-  replyToMessageId?: number
-): Promise<void> {
-  const sent = await sendMessage(chatId, text, replyToMessageId ? { replyToMessageId } : {});
+async function postAck(db: SupabaseRestClient, chatId: number, sourceMessageId: number, text: string): Promise<void> {
+  const sent = await sendMessage(chatId, text);
   await storeActiveAck(db, chatId, { messageId: sent.message_id, sourceMessageId });
+}
+
+/**
+ * Deletes the "/spam" command message. In a group this needs the bot to be an
+ * admin, and in a DM it removes the member's own message.
+ */
+async function deleteCommandMessage(chatId: number, messageId: number): Promise<void> {
+  const deleted = await deleteMessage(chatId, messageId);
+  if (!deleted) {
+    console.warn(
+      `Could not delete the /spam command ${messageId} in chat ${chatId}. The bot may not be an admin in that group.`
+    );
+  }
 }
 
 /**
@@ -169,7 +179,8 @@ export async function handleSpamCommand(
   await clearActiveSpamAck(db, chatId, message.message_id);
 
   if (parsed.kind === "invalid") {
-    await postAck(db, chatId, message.message_id, parsed.reason, message.message_id);
+    await deleteCommandMessage(chatId, message.message_id);
+    await postAck(db, chatId, message.message_id, parsed.reason);
     return true;
   }
 
@@ -186,13 +197,13 @@ export async function handleSpamCommand(
     });
   } catch (error) {
     console.error("Failed to store spam report", error);
-    await postAck(db, chatId, message.message_id, "Could not save that spam report. Please try again.", message.message_id);
+    // Keep the command so the member can retry; the error ack still clears on
+    // the next message.
+    await postAck(db, chatId, message.message_id, "Could not save that spam report. Please try again.");
     return true;
   }
 
-  // Delete the command itself; in a group this needs the bot to be an admin,
-  // and in a DM it removes the member's own message.
-  await deleteMessage(chatId, message.message_id);
+  await deleteCommandMessage(chatId, message.message_id);
   await postAck(db, chatId, message.message_id, buildSpamAckText(registration.member_name, parsed.count));
   return true;
 }
