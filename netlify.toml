@@ -19,6 +19,11 @@
 [functions."cron-weekly-spam-report"]
   schedule = "5 16 * * 0"
 
+# 1st of the month at 00:05 UTC = 08:05 Asia/Manila, just after the month closes.
+# Wrapper around the daily-report function that adds ?spam=monthly.
+[functions."cron-monthly-spam-report"]
+  schedule = "5 0 1 * *"
+
 [[redirects]]
   from = "/api/web/activity"
   to = "/.netlify/functions/web-activity"
@@ -77,4 +82,9 @@
 [[redirects]]
   from = "/api/cron/weekly-spam-report"
   to = "/.netlify/functions/cron-weekly-spam-report"
+  status = 200
+
+[[redirects]]
+  from = "/api/cron/monthly-spam-report"
+  to = "/.netlify/functions/cron-monthly-spam-report"
   status = 200

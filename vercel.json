@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/daily-report?spam=weekly",
       "schedule": "5 16 * * 0"
+    },
+    {
+      "path": "/api/cron/daily-report?spam=monthly",
+      "schedule": "5 0 1 * *"
     }
   ]
 }
