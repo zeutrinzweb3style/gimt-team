@@ -465,8 +465,8 @@ Example ack:
 
 Behavior:
 
-- Only a positive whole number is accepted; `/spam` alone, `/spam 0`, `/spam -2`, or `/spam five` replies with a short usage hint instead of storing anything.
-- The command and the ack are deleted on the next message in the same chat, so a chat shows at most one spam ack at a time. Deleting messages in a group requires the bot to be an **admin** in that group; without admin rights the ack simply stays, and in a DM the bot deletes its own ack plus the member's own `/spam` message.
+- Only a positive whole number is accepted; `/spam` alone, `/spam 0`, `/spam -2`, or `/spam five` replies with a short usage hint instead of storing anything. The command is deleted in every case, valid or not.
+- The command and the ack are deleted on the next message in the same chat from any member, so a chat shows at most one spam ack at a time. The live ack is tracked in `public.app_settings`, not in memory, so it is still removed when the serverless host handles the next message on a different instance. Deleting messages in a group requires the bot to be an **admin** in that group; without admin rights the message simply stays (the failure is logged), and in a DM the bot deletes its own ack plus the member's own `/spam` message.
 - Each report counts once. A member may send several reports in a day and they are summed for the week.
 - The member must be registered (has a row in `public.team_registrations`, created by `/start` in DM). Unregistered users get no reply.
 - Set `SPAM_REPORTS_ENABLED=off` to disable the command entirely.
