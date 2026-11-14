@@ -2,6 +2,7 @@ import { optionalEnv } from "../../src/lib/config.js";
 import { buildCommunitySummary, formatCommunitySummaryMessage } from "../../src/lib/community-summary.js";
 import { buildDailyReport } from "../../src/lib/daily-report.js";
 import { buildProofReportSummary, fetchProofRowsForWindow, getCompletedProofWindow, type ProofReportType } from "../../src/lib/proof-reports.js";
+import { sendWeeklySpamReport } from "../../src/lib/spam-reports.js";
 import { createActivity, releaseCronEvent, tryRecordCronEvent } from "../../src/lib/repository.js";
 import { eq, limit, order, params, type ActivityLog } from "../../src/lib/supabase.js";
 import { getSupabase } from "../../src/lib/supabase.js";
@@ -54,6 +55,24 @@ export default async function handler(request: any, response: any) {
 
   try {
     const startedAt = new Date();
+
+    // The weekly spam summary is served from this same function (rather than a
+    // new api/ route) to stay within Vercel Hobby's 12-function limit. Call it
+    // as ?spam=weekly, which vercel.json schedules for Sunday 16:05 UTC.
+    if (url.searchParams.get("spam") === "weekly") {
+      const result = await sendWeeklySpamReport(getSupabase(), startedAt);
+      sendJson(response, result.success ? 200 : 503, {
+        ok: result.success,
+        task: "weekly-spam-report",
+        skipped: result.skipped,
+        code: result.code,
+        period: result.window,
+        report: result.summary,
+        record_id: result.record_id
+      });
+      return;
+    }
+
     const requestedProofReport = url.searchParams.get("report");
     if (requestedProofReport !== null) {
       if (requestedProofReport !== "weekly" && requestedProofReport !== "monthly") {
