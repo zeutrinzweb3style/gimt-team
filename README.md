@@ -207,13 +207,13 @@ Vercel cron runs (via `vercel.json`, with no schedule more frequent than once pe
 
 - `/api/cron/daily-report` daily at 01:05 UTC to store a daily summary in activity logs.
 - `/api/cron/repeated-issue-report` daily at 01:15 UTC.
-- `/api/cron/weekly-spam-report` Sundays at 16:05 UTC (Monday 00:05 Asia/Manila) to post the completed week's spam totals to the primary group.
+- `/api/cron/daily-report?spam=weekly` Sundays at 16:05 UTC (Monday 00:05 Asia/Manila) to post the completed week's spam totals to the primary group. It reuses the daily-report function through the `spam=weekly` query so the project stays within Vercel Hobby's 12-function limit.
 
 Weekly and monthly Proof of Work reports are triggered by the external scheduler described above; the existing Vercel daily report schedule remains only for the daily activity summary.
 
 The every-5-minutes timekeeping job cannot run as a Vercel cron on the Hobby plan (Hobby accounts are limited to daily cron jobs), so it is triggered by a GitHub Actions workflow (`.github/workflows/timekeeping-cron.yml`) that pings `/api/cron/timekeeping` every 5 minutes. See [Timekeeping cron schedule](#timekeeping-cron-schedule) for the required repository secrets.
 
-On Netlify, configure scheduled calls to the same URLs (`/api/cron/timekeeping`, `/api/cron/daily-report`, and `/api/cron/weekly-spam-report`) with your preferred scheduler, or migrate these wrappers to Netlify Scheduled Functions if you want Netlify to own the schedule.
+On Netlify, the same jobs run as scheduled functions declared in `netlify.toml` (`cron-timekeeping`, `cron-daily-report`, `cron-repeated-issue-report`, and `cron-weekly-spam-report`). The weekly spam wrapper calls the daily-report function with `?spam=weekly`, and `/api/cron/weekly-spam-report` is redirected to it so an external scheduler can call the same friendly URL.
 
 Both endpoints accept either `Authorization: Bearer $CRON_SECRET` or `?secret=$CRON_SECRET` when `CRON_SECRET` is configured.
 
@@ -473,7 +473,7 @@ Behavior:
 
 ### Weekly spam report
 
-The weekly summary is posted to the primary group by `/api/cron/weekly-spam-report` (Sundays 16:05 UTC = Monday 00:05 Asia/Manila), covering the Monday–Sunday `Asia/Manila` week that just closed. Example:
+The weekly summary is posted to the primary group by `/api/cron/weekly-spam-report` (Sundays 16:05 UTC = Monday 00:05 Asia/Manila), covering the Monday–Sunday `Asia/Manila` week that just closed. On Vercel this is the `/api/cron/daily-report?spam=weekly` schedule, and on Netlify the `cron-weekly-spam-report` scheduled function; both reach the same code. Example:
 
 ```text
 🧹 Weekly Spam Report
