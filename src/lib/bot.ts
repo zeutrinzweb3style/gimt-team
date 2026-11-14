@@ -186,8 +186,9 @@ async function handleMessage(db: SupabaseRestClient, message: TelegramMessage): 
     return;
   }
 
-  // "/spam <count>" is accepted in a DM from a registered member, matching the
-  // primary-group behavior. Parsed first so ordinary DMs skip the lookup.
+  // "/spam <count>" is accepted in a DM from a registered member. The report is
+  // stored and acknowledged in the primary group, not in the DM. Parsed first so
+  // ordinary DMs skip the lookup.
   if (isSpamReportingEnabled() && parseSpamCommand(text).kind !== "not_spam") {
     const spamRegistration = await findRegistrationByUser(db, user.id);
     if (spamRegistration && (await handleSpamCommand(db, message, spamRegistration))) return;
