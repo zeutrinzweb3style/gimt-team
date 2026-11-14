@@ -16,6 +16,11 @@ export function isTeamInboxEnabled(): boolean {
   return (process.env.TEAM_INBOX_MODE || "").trim().toLowerCase() !== "off";
 }
 
+/** Spam reporting is on unless explicitly switched off with SPAM_REPORTS_ENABLED=off. */
+export function isSpamReportingEnabled(): boolean {
+  return (process.env.SPAM_REPORTS_ENABLED || "on").trim().toLowerCase() !== "off";
+}
+
 /** Time reserved for the scheduled responder before coverage may reply. */
 export const TEAM_INBOX_PRIMARY_GRACE_MINUTES = 10;
 

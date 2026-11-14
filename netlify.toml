@@ -14,6 +14,10 @@
 [functions."cron-repeated-issue-report"]
   schedule = "15 1 * * *"
 
+# Sunday 16:05 UTC = Monday 00:05 Asia/Manila, just after the spam week closes.
+[functions."cron-weekly-spam-report"]
+  schedule = "5 16 * * 0"
+
 [[redirects]]
   from = "/api/web/activity"
   to = "/.netlify/functions/web-activity"
@@ -67,4 +71,9 @@
 [[redirects]]
   from = "/api/cron/repeated-issue-report"
   to = "/.netlify/functions/cron-repeated-issue-report"
+  status = 200
+
+[[redirects]]
+  from = "/api/cron/weekly-spam-report"
+  to = "/.netlify/functions/cron-weekly-spam-report"
   status = 200

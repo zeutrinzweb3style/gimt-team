@@ -36,6 +36,8 @@ TEAM_GROUP_CHAT_ID=
 TEAM_STATS_GROUP_CHAT_IDS=
 # Optional support flow switch: old or ai
 SUPPORT_MODE=old
+# Optional spam reporting switch: on (default) or off
+SPAM_REPORTS_ENABLED=on
 # Optional timekeeping-cron watchdog: minutes without a successful run before /api/cron/health reports stale
 CRON_STALE_AFTER_MINUTES=45
 # Optional timekeeping-cron watchdog: minimum hours between repeated stale alerts
@@ -205,12 +207,13 @@ Vercel cron runs (via `vercel.json`, with no schedule more frequent than once pe
 
 - `/api/cron/daily-report` daily at 01:05 UTC to store a daily summary in activity logs.
 - `/api/cron/repeated-issue-report` daily at 01:15 UTC.
+- `/api/cron/weekly-spam-report` Sundays at 16:05 UTC (Monday 00:05 Asia/Manila) to post the completed week's spam totals to the primary group.
 
 Weekly and monthly Proof of Work reports are triggered by the external scheduler described above; the existing Vercel daily report schedule remains only for the daily activity summary.
 
 The every-5-minutes timekeeping job cannot run as a Vercel cron on the Hobby plan (Hobby accounts are limited to daily cron jobs), so it is triggered by a GitHub Actions workflow (`.github/workflows/timekeeping-cron.yml`) that pings `/api/cron/timekeeping` every 5 minutes. See [Timekeeping cron schedule](#timekeeping-cron-schedule) for the required repository secrets.
 
-On Netlify, configure scheduled calls to the same URLs (`/api/cron/timekeeping` and `/api/cron/daily-report`) with your preferred scheduler, or migrate these wrappers to Netlify Scheduled Functions if you want Netlify to own the schedule.
+On Netlify, configure scheduled calls to the same URLs (`/api/cron/timekeeping`, `/api/cron/daily-report`, and `/api/cron/weekly-spam-report`) with your preferred scheduler, or migrate these wrappers to Netlify Scheduled Functions if you want Netlify to own the schedule.
 
 Both endpoints accept either `Authorization: Bearer $CRON_SECRET` or `?secret=$CRON_SECRET` when `CRON_SECRET` is configured.
 
@@ -443,6 +446,49 @@ Scope and privacy:
 - Members can only ask about **themselves**. Asking about a teammate (for example, *"how many tickets for Pablo"*) gets a short notice that only self-stats are available; no other member's numbers are shown.
 - The answer is posted only in the **main group**. In other groups the explicit `/mystats` command replies that stats live in the main team group, and natural-language asks are ignored so public groups are unaffected.
 - If `TEAM_GROUP_CHAT_ID` is unset, the bot falls back to the chat ID it stored in `public.app_settings` (key `team_group_chat_id`) to decide which group is the main one.
+
+## Spam reporting (`/spam`)
+
+A registered team member can report how much spam they removed with `/spam <count>`. Reports are accepted in the primary group (`TEAM_GROUP_CHAT_ID`) and in a DM, and can be sent any number of times per day. Each report is stored as one row in `public.spam_reports`, and a weekly summary is posted to the primary group.
+
+```text
+/spam 1
+/spam 5
+/spam@YourBotUsername 10
+```
+
+Example ack:
+
+```text
+🧹 Betz reported 5 removed spam.
+```
+
+Behavior:
+
+- Only a positive whole number is accepted; `/spam` alone, `/spam 0`, `/spam -2`, or `/spam five` replies with a short usage hint instead of storing anything.
+- The command and the ack are deleted on the next message in the same chat, so a chat shows at most one spam ack at a time. Deleting messages in a group requires the bot to be an **admin** in that group; without admin rights the ack simply stays, and in a DM the bot deletes its own ack plus the member's own `/spam` message.
+- Each report counts once. A member may send several reports in a day and they are summed for the week.
+- The member must be registered (has a row in `public.team_registrations`, created by `/start` in DM). Unregistered users get no reply.
+- Set `SPAM_REPORTS_ENABLED=off` to disable the command entirely.
+
+### Weekly spam report
+
+The weekly summary is posted to the primary group by `/api/cron/weekly-spam-report` (Sundays 16:05 UTC = Monday 00:05 Asia/Manila), covering the Monday–Sunday `Asia/Manila` week that just closed. Example:
+
+```text
+🧹 Weekly Spam Report
+November 2, 2026 – November 8, 2026 (Asia/Manila)
+Total: 18 removed spam from 3 members
+
+• Omar — 10
+• Betz — 7
+• Pablo — 1
+```
+
+- Members are listed from most to least reported; the total sums every report in the week.
+- Each completed week is deduplicated through `cron_events`, so a retried or duplicated scheduler call is safe.
+- When no spam was reported the message says so instead of listing an empty table.
+- The endpoint accepts either `Authorization: Bearer $CRON_SECRET` or `?secret=$CRON_SECRET` when `CRON_SECRET` is configured.
 
 ## Group chat activity analytics
 

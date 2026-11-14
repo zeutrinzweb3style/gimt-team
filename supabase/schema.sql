@@ -393,3 +393,22 @@ create table if not exists public.member_profiles (
   links jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
+
+-- Spam reports: one row per "/spam <count>" a registered member sends, from the
+-- primary group or a DM. Reports are unlimited per day; the weekly summary sums
+-- reported_count per member. Kept append-only so the raw reports remain the
+-- source of truth for the weekly aggregate.
+create table if not exists public.spam_reports (
+  id uuid primary key default gen_random_uuid(),
+  member_id text not null,
+  member_name text not null,
+  telegram_user_id bigint not null,
+  telegram_chat_id bigint not null,
+  reported_count integer not null check (reported_count > 0),
+  work_date_utc date not null,
+  reported_at_utc timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists spam_reports_member_date_idx on public.spam_reports(member_id, work_date_utc desc);
+create index if not exists spam_reports_reported_at_idx on public.spam_reports(reported_at_utc desc);

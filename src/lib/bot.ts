@@ -51,10 +51,11 @@ import {
   sendTeamGroupMessageWithResult
 } from "./group-notifications.js";
 import { getTeamMember, TEAM_SCHEDULE, type TeamMember } from "./team-schedule.js";
+import { clearActiveSpamAck, handleSpamCommand, parseSpamCommand } from "./spam-reports.js";
 import { getStorage, type StorageClient } from "./storage.js";
 import { answerCallbackQuery, copyMessage, deleteMessage, downloadFile, editMessageText, getChatMember, getFile, sendMessage, type SentTelegramMessage } from "./telegram.js";
 import type { TelegramCallbackQuery, TelegramChat, TelegramChatMemberUpdated, TelegramMessage, TelegramUpdate, TelegramUser } from "./telegram-types.js";
-import { getSupportMode, isTeamInboxEnabled, optionalEnv, TEAM_INBOX_PRIMARY_GRACE_MINUTES } from "./config.js";
+import { getSupportMode, isSpamReportingEnabled, isTeamInboxEnabled, optionalEnv, TEAM_INBOX_PRIMARY_GRACE_MINUTES } from "./config.js";
 import {
   buildMemberTicketStats,
   formatMemberTicketStatsReply,
@@ -131,6 +132,13 @@ async function handleMessage(db: SupabaseRestClient, message: TelegramMessage): 
     return;
   }
 
+  // A spam ack lives only until the next message in the same chat, so drop it as
+  // soon as any new message arrives (the guard inside ignores the message that
+  // produced the ack when Telegram redelivers an update).
+  if (isSpamReportingEnabled()) {
+    await clearActiveSpamAck(db, message.chat.id, message.message_id);
+  }
+
   if (isChatIdCommand(command)) {
     await sendMessage(message.chat.id, buildChatIdText(message.chat));
     return;
@@ -176,6 +184,13 @@ async function handleMessage(db: SupabaseRestClient, message: TelegramMessage): 
   if (isGroupChat(message.chat)) {
     await trackGroupMessage(db, message, user);
     return;
+  }
+
+  // "/spam <count>" is accepted in a DM from a registered member, matching the
+  // primary-group behavior. Parsed first so ordinary DMs skip the lookup.
+  if (isSpamReportingEnabled() && parseSpamCommand(text).kind !== "not_spam") {
+    const spamRegistration = await findRegistrationByUser(db, user.id);
+    if (spamRegistration && (await handleSpamCommand(db, message, spamRegistration))) return;
   }
 
   const state = await getConversationState(db, user.id);
@@ -421,6 +436,23 @@ async function trackGroupMessage(
     }
   }
 
+  // "/spam <count>" is accepted in the primary group only, so public support
+  // groups are unaffected. DM reports are handled in the DM path. The stored
+  // fallback covers a deployment where TEAM_GROUP_CHAT_ID is not set.
+  if (isSpamReportingEnabled()) {
+    let primaryChatId = envChatId;
+    if (primaryChatId === undefined) {
+      try {
+        primaryChatId = await getStoredTeamGroupChatId();
+      } catch (error) {
+        console.error("Could not read stored team group chat id while checking spam reports", error);
+      }
+    }
+    if (primaryChatId === undefined || primaryChatId === message.chat.id) {
+      if (await handleSpamCommand(db, message, registration)) return;
+    }
+  }
+
   // A registered member asking for their own handled-ticket count is answered
   // only in the main group. This runs before the saved-command playback so an
   // unknown /mystats command is not swallowed silently.
@@ -598,6 +630,7 @@ const RESERVED_SAVED_COMMAND_NAMES = new Set([
   "mytickets",
   "personal",
   "save",
+  "spam",
   "start"
 ]);
 
