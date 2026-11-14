@@ -461,15 +461,16 @@ Example ack:
 
 ```text
 🧹 Betz reported 5 removed spam.
+This week (November 9, 2026 – November 15, 2026): 10 total
 ```
 
-The ack always lands in the primary group, whether the report came from the group or from a DM. A DM report is therefore announced to the whole team instead of sitting in the member's private chat.
+The ack always lands in the primary group, whether the report came from the group or from a DM. A DM report is therefore announced to the whole team instead of sitting in the member's private chat. It shows the count in that message plus the member's running total for the current `Asia/Manila` Monday–Sunday week and the dates of that week.
 
 Behavior:
 
 - Only a positive whole number is accepted; `/spam` alone, `/spam 0`, `/spam -2`, or `/spam five` replies with a short usage hint instead of storing anything. The command is deleted in every case, valid or not.
 - The `/spam` command is deleted in the chat where it was sent (the group, or the member's DM). The ack is posted to the primary group and deleted on the next message in that group from any member, so the group shows at most one spam ack at a time. The live ack is tracked in `public.app_settings`, not in memory, so it is still removed when the serverless host handles the next message on a different instance. Deleting messages in a group requires the bot to be an **admin** in that group; without admin rights the message simply stays (the failure is logged), and in a DM the bot deletes the member's own `/spam` message.
-- Each report counts once. A member may send several reports in a day and they are summed for the week.
+- The weekly total is the sum of that member's reports in the current Monday–Sunday `Asia/Manila` week. It resets every Monday 00:00 Asia/Manila; the earlier weeks stay in `public.spam_reports` and are what the weekly report below sums, so nothing is lost when a new week starts.
 - The member must be registered (has a row in `public.team_registrations`, created by `/start` in DM). Unregistered users get no reply.
 - Set `SPAM_REPORTS_ENABLED=off` to disable the command entirely.
 

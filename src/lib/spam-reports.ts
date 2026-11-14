@@ -1,9 +1,10 @@
-import { getCompletedProofWindow } from "./proof-reports.js";
+import { getCompletedProofWindow, dateKeyInManila, addDays, manilaMidnightUtc, currentMonday } from "./proof-reports.js";
 import { formatReportDate } from "./repeated-issue-report.js";
 import {
   createActivity,
   createSpamReport,
   getAppSetting,
+  listMemberSpamReportsInRange,
   listSpamReportsInRange,
   releaseCronEvent,
   tryRecordCronEvent,
@@ -51,8 +52,18 @@ function escapeHtml(text: string): string {
 }
 
 /** Plain-text ack (no parse mode), so member names need no escaping. */
-export function buildSpamAckText(memberName: string, count: number): string {
-  return `🧹 ${memberName} reported ${count} removed spam.`;
+export function buildSpamAckText(
+  memberName: string,
+  count: number,
+  weekly?: { total: number; window: SpamReportWindow }
+): string {
+  const lines = [`🧹 ${memberName} reported ${count} removed spam.`];
+  if (weekly) {
+    lines.push(
+      `This week (${formatReportDate(weekly.window.startDate)} – ${formatReportDate(weekly.window.endDate)}): ${weekly.total} total`
+    );
+  }
+  return lines.join("\n");
 }
 
 type ActiveAck = { messageId: number; sourceMessageId: number };
@@ -240,8 +251,14 @@ export async function handleSpamCommand(
     return true;
   }
 
+  const weeklyTotal = await getMemberWeeklySpamTotal(db, registration.member_id, now);
   await deleteCommandMessage(sourceChatId, message.message_id);
-  await postAck(db, ackChatId, message.message_id, buildSpamAckText(registration.member_name, parsed.count));
+  await postAck(
+    db,
+    ackChatId,
+    message.message_id,
+    buildSpamAckText(registration.member_name, parsed.count, weeklyTotal ?? undefined)
+  );
   return true;
 }
 
@@ -277,6 +294,53 @@ export function getCompletedSpamWindow(now = new Date()): SpamReportWindow {
     startUtc: window.startUtc,
     endUtcExclusive: window.endUtcExclusive
   };
+}
+
+/**
+ * The Monday–Sunday Asia/Manila week that contains `now`. Counters reset here:
+ * each week has its own window, so a new week starts from zero while the
+ * previous week's reports stay in the database for that week's report.
+ */
+export function getCurrentSpamWindow(now = new Date()): SpamReportWindow {
+  const startDate = currentMonday(dateKeyInManila(now));
+  const endDate = addDays(startDate, 6);
+  return {
+    key: `week:${startDate}`,
+    startDate,
+    endDate,
+    startUtc: manilaMidnightUtc(startDate).toISOString(),
+    endUtcExclusive: manilaMidnightUtc(addDays(endDate, 1)).toISOString()
+  };
+}
+
+/** The inclusive UTC bounds of a window, for `reported_at_utc` range queries. */
+function windowRange(window: SpamReportWindow): { fromUtcIso: string; toUtcIso: string } {
+  return {
+    fromUtcIso: window.startUtc,
+    toUtcIso: new Date(new Date(window.endUtcExclusive).getTime() - 1).toISOString()
+  };
+}
+
+/**
+ * One member's running total for the week that contains `now`. Returns null when
+ * the read fails, so the caller can still post the ack without the total.
+ */
+async function getMemberWeeklySpamTotal(
+  db: SupabaseRestClient,
+  memberId: string,
+  now = new Date()
+): Promise<{ total: number; window: SpamReportWindow } | null> {
+  const window = getCurrentSpamWindow(now);
+  const { fromUtcIso, toUtcIso } = windowRange(window);
+  try {
+    const rows = await listMemberSpamReportsInRange(db, memberId, fromUtcIso, toUtcIso);
+    return { total: rows.reduce((sum, row) => sum + row.reported_count, 0), window };
+  } catch (error) {
+    console.warn(
+      `Could not read the weekly spam total for ${memberId}: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return null;
+  }
 }
 
 export function buildSpamReportSummary(window: SpamReportWindow, rows: SpamReport[]): SpamReportSummary {

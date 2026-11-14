@@ -787,3 +787,21 @@ export async function listSpamReportsInRange(
     )
   );
 }
+
+/** One member's spam reports whose `reported_at_utc` falls in the inclusive UTC window. */
+export async function listMemberSpamReportsInRange(
+  db: SupabaseRestClient,
+  memberId: string,
+  fromUtcIso: string,
+  toUtcIso: string
+): Promise<SpamReport[]> {
+  return db.select<SpamReport>(
+    "spam_reports",
+    params(
+      eq("member_id", memberId),
+      gte("reported_at_utc", fromUtcIso),
+      lte("reported_at_utc", toUtcIso),
+      order("reported_at_utc", true)
+    )
+  );
+}
