@@ -1,4 +1,4 @@
-import { eq, gte, inList, isNull, limit, lte, order, params, type ActivityLog, type AppSetting, type ConversationState, type GroupActionMessage, type GroupActionType, type GroupMessageStat, type MemberProfile, type ProofOfWorkReminder, type ProofOfWorkSubmission, type Registration, type SavedCommand, type ShiftRequest, type SupportTicket, type SupportTicketEvent, type SupportTicketMessage, type SupportTicketStatus, type SupabaseRestClient, type SupportTicketAttachment, type TeamInboxDm, type TelegramGroup, type TimeLog } from "./supabase.js";
+import { eq, gte, inList, isNull, limit, lte, order, params, type ActivityLog, type AppSetting, type ConversationState, type GroupActionMessage, type GroupActionType, type GroupMessageStat, type MemberProfile, type ProofOfWorkReminder, type ProofOfWorkSubmission, type Registration, type SavedCommand, type ShiftRequest, type SpamReport, type SupportTicket, type SupportTicketEvent, type SupportTicketMessage, type SupportTicketStatus, type SupabaseRestClient, type SupportTicketAttachment, type TeamInboxDm, type TelegramGroup, type TimeLog } from "./supabase.js";
 import type { TelegramUser } from "./telegram-types.js";
 import type { TeamMember } from "./team-schedule.js";
 
@@ -755,4 +755,35 @@ export async function recordSupportTicketEvent(
   payload: Omit<SupportTicketEvent, "id" | "created_at">
 ): Promise<SupportTicketEvent> {
   return single(await db.insert<SupportTicketEvent>("support_ticket_events", payload));
+}
+
+export async function createSpamReport(
+  db: SupabaseRestClient,
+  payload: {
+    member_id: string;
+    member_name: string;
+    telegram_user_id: number;
+    telegram_chat_id: number;
+    reported_count: number;
+    work_date_utc: string;
+    reported_at_utc: string;
+  }
+): Promise<SpamReport> {
+  return single(await db.insert<SpamReport>("spam_reports", payload));
+}
+
+/** Spam reports whose `reported_at_utc` falls in the inclusive UTC window. */
+export async function listSpamReportsInRange(
+  db: SupabaseRestClient,
+  fromUtcIso: string,
+  toUtcIso: string
+): Promise<SpamReport[]> {
+  return db.select<SpamReport>(
+    "spam_reports",
+    params(
+      gte("reported_at_utc", fromUtcIso),
+      lte("reported_at_utc", toUtcIso),
+      order("reported_at_utc", true)
+    )
+  );
 }

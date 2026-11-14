@@ -139,6 +139,18 @@ export type GroupMessageStatWithGroup = GroupMessageStat & {
   group_type: string | null;
 };
 
+export type SpamReport = {
+  id: string;
+  member_id: string;
+  member_name: string;
+  telegram_user_id: number;
+  telegram_chat_id: number;
+  reported_count: number;
+  work_date_utc: string;
+  reported_at_utc: string;
+  created_at: string;
+};
+
 export type SavedCommand = {
   id: string;
   owner_telegram_user_id: number;
