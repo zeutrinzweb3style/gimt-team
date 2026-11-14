@@ -43,7 +43,7 @@ const MANILA_TZ = "Asia/Manila";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 1000;
 
-function dateKeyInManila(value: Date | string): string {
+export function dateKeyInManila(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(value);
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: MANILA_TZ,
@@ -55,17 +55,17 @@ function dateKeyInManila(value: Date | string): string {
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-function addDays(dateKey: string, days: number): string {
+export function addDays(dateKey: string, days: number): string {
   const [year, month, day] = dateKey.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day + days));
   return date.toISOString().slice(0, 10);
 }
 
-function manilaMidnightUtc(dateKey: string): Date {
+export function manilaMidnightUtc(dateKey: string): Date {
   return new Date(`${dateKey}T00:00:00+08:00`);
 }
 
-function currentMonday(dateKey: string): string {
+export function currentMonday(dateKey: string): string {
   const [year, month, day] = dateKey.split("-").map(Number);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
   const daysSinceMonday = (weekday + 6) % 7;
