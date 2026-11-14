@@ -9,7 +9,7 @@ import {
   tryRecordCronEvent,
   upsertAppSetting
 } from "./repository.js";
-import { sendTeamGroupMessage } from "./group-notifications.js";
+import { getStoredTeamGroupChatId, getTeamGroupChatId, sendTeamGroupMessage } from "./group-notifications.js";
 import { deleteMessage, sendMessage } from "./telegram.js";
 import { utcDateKey } from "./time.js";
 import type { Registration, SpamReport, SupabaseRestClient } from "./supabase.js";
@@ -144,8 +144,12 @@ export async function clearActiveSpamAck(
 }
 
 async function postAck(db: SupabaseRestClient, chatId: number, sourceMessageId: number, text: string): Promise<void> {
-  const sent = await sendMessage(chatId, text);
-  await storeActiveAck(db, chatId, { messageId: sent.message_id, sourceMessageId });
+  try {
+    const sent = await sendMessage(chatId, text);
+    await storeActiveAck(db, chatId, { messageId: sent.message_id, sourceMessageId });
+  } catch (error) {
+    console.error(`Failed to post the spam ack to chat ${chatId}:`, error);
+  }
 }
 
 /**
@@ -161,11 +165,43 @@ async function deleteCommandMessage(chatId: number, messageId: number): Promise<
   }
 }
 
+function isGroupChat(message: TelegramMessage): boolean {
+  return message.chat.type === "group" || message.chat.type === "supergroup";
+}
+
+/**
+ * The chat where a spam ack is posted. A group report is acknowledged in that
+ * group; a DM report is acknowledged in the primary group so the whole team
+ * sees it, instead of leaving the ack in the member's private chat.
+ */
+async function resolveAckChatId(db: SupabaseRestClient, message: TelegramMessage): Promise<number> {
+  if (isGroupChat(message)) return message.chat.id;
+
+  let envChatId: number | undefined;
+  try {
+    envChatId = getTeamGroupChatId();
+  } catch (error) {
+    console.error("Invalid TEAM_GROUP_CHAT_ID", error);
+  }
+  if (envChatId !== undefined) return envChatId;
+
+  try {
+    const storedChatId = await getStoredTeamGroupChatId();
+    if (storedChatId !== undefined) return storedChatId;
+  } catch (error) {
+    console.error("Could not read the stored team group chat id for a spam ack", error);
+  }
+
+  // No primary group is known yet; keep the ack in the DM rather than dropping it.
+  return message.chat.id;
+}
+
 /**
  * Handles a "/spam <count>" report from a registered member in the primary group
  * or a DM. Stores the report, deletes the command message, and posts an ack that
- * the next message in the chat removes. Returns true when the message was a spam
- * report (valid or not) so the caller stops processing it.
+ * the next message removes. A DM report is acknowledged in the primary group.
+ * Returns true when the message was a spam report (valid or not) so the caller
+ * stops processing it.
  */
 export async function handleSpamCommand(
   db: SupabaseRestClient,
@@ -175,12 +211,13 @@ export async function handleSpamCommand(
   const parsed = parseSpamCommand(message.text ?? "");
   if (parsed.kind === "not_spam") return false;
 
-  const chatId = message.chat.id;
-  await clearActiveSpamAck(db, chatId, message.message_id);
+  const sourceChatId = message.chat.id;
+  const ackChatId = await resolveAckChatId(db, message);
+  await clearActiveSpamAck(db, ackChatId, message.message_id);
 
   if (parsed.kind === "invalid") {
-    await deleteCommandMessage(chatId, message.message_id);
-    await postAck(db, chatId, message.message_id, parsed.reason);
+    await deleteCommandMessage(sourceChatId, message.message_id);
+    await postAck(db, ackChatId, message.message_id, parsed.reason);
     return true;
   }
 
@@ -190,7 +227,7 @@ export async function handleSpamCommand(
       member_id: registration.member_id,
       member_name: registration.member_name,
       telegram_user_id: registration.telegram_user_id,
-      telegram_chat_id: chatId,
+      telegram_chat_id: sourceChatId,
       reported_count: parsed.count,
       work_date_utc: utcDateKey(now),
       reported_at_utc: now.toISOString()
@@ -199,12 +236,12 @@ export async function handleSpamCommand(
     console.error("Failed to store spam report", error);
     // Keep the command so the member can retry; the error ack still clears on
     // the next message.
-    await postAck(db, chatId, message.message_id, "Could not save that spam report. Please try again.");
+    await postAck(db, ackChatId, message.message_id, "Could not save that spam report. Please try again.");
     return true;
   }
 
-  await deleteCommandMessage(chatId, message.message_id);
-  await postAck(db, chatId, message.message_id, buildSpamAckText(registration.member_name, parsed.count));
+  await deleteCommandMessage(sourceChatId, message.message_id);
+  await postAck(db, ackChatId, message.message_id, buildSpamAckText(registration.member_name, parsed.count));
   return true;
 }
 
