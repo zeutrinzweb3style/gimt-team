@@ -493,6 +493,24 @@ Total: 18 removed spam from 3 members
 - When no spam was reported the message says so instead of listing an empty table.
 - The endpoint accepts either `Authorization: Bearer $CRON_SECRET` or `?secret=$CRON_SECRET` when `CRON_SECRET` is configured.
 
+### Monthly spam report
+
+The same code posts a monthly summary for the calendar month that just closed. It runs on the 1st at 00:05 UTC (08:05 Asia/Manila), covering that previous month in `Asia/Manila`. On Vercel this is the `/api/cron/daily-report?spam=monthly` schedule, and on Netlify the `cron-monthly-spam-report` scheduled function. Example:
+
+```text
+🧹 Monthly Spam Report
+November 1, 2026 – November 30, 2026 (Asia/Manila)
+Total: 120 removed spam from 5 members
+
+• Betz — 45
+• Omar — 30
+• Pablo — 25
+• Wika — 12
+• Renz — 8
+```
+
+It reuses the weekly report's sender, so the same rules apply: members ranked from most to least reported, one message per period, deduplicated through `cron_events` (event key `spam-report:month:<YYYY-MM>`), and an empty month says so instead of listing an empty table. Reports from earlier periods stay in `public.spam_reports`, so each period is summed independently and nothing is lost.
+
 ## Group chat activity analytics
 
 When `TEAM_GROUP_CHAT_ID` is configured, the bot keeps a daily counter of how many messages each registered team member sends in the team group. Counts are stored in `public.group_message_stats` (one row per `(member_id, telegram_chat_id, work_date_utc)`) and incremented atomically via the SQL function `public.increment_group_message_count`. Rows are never deleted, so the table acts as a permanent, per-day activity log you can query directly in Supabase.

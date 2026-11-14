@@ -19,6 +19,7 @@ import type { TelegramMessage } from "./telegram-types.js";
 const SPAM_COMMAND = "/spam";
 const MAX_REPORTED_COUNT = 100_000;
 const WEEKLY_REPORT_ACTION = "SPAM_WEEKLY_REPORT";
+const MONTHLY_REPORT_ACTION = "SPAM_MONTHLY_REPORT";
 
 export type SpamCommand =
   | { kind: "not_spam" }
@@ -296,6 +297,18 @@ export function getCompletedSpamWindow(now = new Date()): SpamReportWindow {
   };
 }
 
+/** The most recently completed calendar month in Asia/Manila (the previous month). */
+export function getCompletedSpamMonth(now = new Date()): SpamReportWindow {
+  const window = getCompletedProofWindow("monthly", now);
+  return {
+    key: window.key,
+    startDate: window.startDate,
+    endDate: window.endDate,
+    startUtc: window.startUtc,
+    endUtcExclusive: window.endUtcExclusive
+  };
+}
+
 /**
  * The Monday–Sunday Asia/Manila week that contains `now`. Counters reset here:
  * each week has its own window, so a new week starts from zero while the
@@ -370,15 +383,15 @@ export function buildSpamReportSummary(window: SpamReportWindow, rows: SpamRepor
   };
 }
 
-export function formatSpamReportMessage(summary: SpamReportSummary): string {
+function buildSpamReportLines(title: string, emptyText: string, summary: SpamReportSummary): string[] {
   const lines = [
-    "🧹 <b>Weekly Spam Report</b>",
+    `🧹 <b>${title}</b>`,
     `${formatReportDate(summary.window.startDate)} – ${formatReportDate(summary.window.endDate)} (Asia/Manila)`
   ];
 
   if (summary.members.length === 0) {
-    lines.push("", "No spam was reported this week.");
-    return lines.join("\n");
+    lines.push("", emptyText);
+    return lines;
   }
 
   const noun = summary.member_count === 1 ? "member" : "members";
@@ -386,10 +399,18 @@ export function formatSpamReportMessage(summary: SpamReportSummary): string {
   for (const member of summary.members) {
     lines.push(`• ${escapeHtml(member.member_name)} — ${member.total}`);
   }
-  return lines.join("\n");
+  return lines;
 }
 
-export type WeeklySpamReportResult = {
+export function formatSpamReportMessage(summary: SpamReportSummary): string {
+  return buildSpamReportLines("Weekly Spam Report", "No spam was reported this week.", summary).join("\n");
+}
+
+export function formatMonthlySpamReportMessage(summary: SpamReportSummary): string {
+  return buildSpamReportLines("Monthly Spam Report", "No spam was reported this month.", summary).join("\n");
+}
+
+export type SpamReportResult = {
   success: boolean;
   skipped: boolean;
   code?: string;
@@ -398,18 +419,27 @@ export type WeeklySpamReportResult = {
   record_id: string | null;
 };
 
-/**
- * Posts the completed week's spam totals to the primary group. Deduplicated per
- * week through cron_events, so a retried or duplicated scheduler call is safe.
- */
-export async function sendWeeklySpamReport(
-  db: SupabaseRestClient,
-  now = new Date()
-): Promise<WeeklySpamReportResult> {
-  const window = getCompletedSpamWindow(now);
-  const eventKey = `spam-report:${window.key}`;
+export type WeeklySpamReportResult = SpamReportResult;
 
-  const claimed = await tryRecordCronEvent(db, eventKey, "system", window.endDate, WEEKLY_REPORT_ACTION);
+type SpamReportPeriod = "weekly" | "monthly";
+
+/**
+ * Posts the completed period's spam totals to the primary group. Deduplicated
+ * per period through cron_events, so a retried or duplicated scheduler call is
+ * safe.
+ */
+async function sendSpamReport(
+  db: SupabaseRestClient,
+  period: SpamReportPeriod,
+  now = new Date()
+): Promise<SpamReportResult> {
+  const window = period === "weekly" ? getCompletedSpamWindow(now) : getCompletedSpamMonth(now);
+  const eventKey = `spam-report:${window.key}`;
+  const action = period === "weekly" ? WEEKLY_REPORT_ACTION : MONTHLY_REPORT_ACTION;
+  const label = period === "weekly" ? "Weekly" : "Monthly";
+  const format = period === "weekly" ? formatSpamReportMessage : formatMonthlySpamReportMessage;
+
+  const claimed = await tryRecordCronEvent(db, eventKey, "system", window.endDate, action);
   if (!claimed) {
     return { success: true, skipped: true, window, summary: null, record_id: null };
   }
@@ -419,7 +449,7 @@ export async function sendWeeklySpamReport(
     const rows = await listSpamReportsInRange(db, window.startUtc, endInclusive);
     const summary = buildSpamReportSummary(window, rows);
 
-    const sent = await sendTeamGroupMessage(formatSpamReportMessage(summary), { parseMode: "HTML" });
+    const sent = await sendTeamGroupMessage(format(summary), { parseMode: "HTML" });
     if (!sent) {
       await releaseCronEvent(db, eventKey);
       return { success: false, skipped: false, code: "group_unavailable", window, summary: null, record_id: null };
@@ -429,8 +459,8 @@ export async function sendWeeklySpamReport(
       member_id: "system",
       member_name: "System",
       telegram_user_id: null,
-      action: WEEKLY_REPORT_ACTION,
-      message: `Weekly spam report ${summary.window.startDate} to ${summary.window.endDate}: ${summary.total} removed spam from ${summary.member_count} members.`,
+      action,
+      message: `${label} spam report ${summary.window.startDate} to ${summary.window.endDate}: ${summary.total} removed spam from ${summary.member_count} members.`,
       metadata: summary as unknown as Record<string, unknown>
     });
 
@@ -439,4 +469,14 @@ export async function sendWeeklySpamReport(
     await releaseCronEvent(db, eventKey);
     throw error;
   }
+}
+
+/** Posts the completed week's spam totals to the primary group. */
+export function sendWeeklySpamReport(db: SupabaseRestClient, now = new Date()): Promise<SpamReportResult> {
+  return sendSpamReport(db, "weekly", now);
+}
+
+/** Posts the completed month's spam totals to the primary group. */
+export function sendMonthlySpamReport(db: SupabaseRestClient, now = new Date()): Promise<SpamReportResult> {
+  return sendSpamReport(db, "monthly", now);
 }
