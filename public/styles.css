@@ -1426,7 +1426,11 @@ body.home-welcome-mode #last-updated {
 
 /* ---------------------------------------------------------------- pages -- */
 /* Hierarchical pages: sidebar tree + block editor, Notion-inspired. */
-.pages-page { display: block; }
+/* Scoped to the active tab: a bare `.pages-page` rule has the same specificity
+   as `[data-tab-panel]` but comes later, so it used to keep the sidebar and
+   editor on screen in every other view — including a shared page, where it read
+   as a blank panel with buttons above the page content. */
+.pages-page.active { display: block; }
 .pg-layout {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
@@ -1776,6 +1780,18 @@ textarea.pg-image-caption:focus { background: rgb(248 250 252); border-radius: 6
    hosting card the same accent rail as the directory and the sidebar. It is a
    background layer rather than an overflowing pseudo element so the panel does
    not need overflow:hidden. */
+/* A shared page (?page=<token>) is the one view a visitor reaches on its own, so
+   the dashboard chrome steps aside: no brand bar, no Telegram login, no nav
+   tabs, no footer. What remains is the page, centred in a single column. */
+body.shared-page-mode > header,
+body.shared-page-mode footer {
+  display: none;
+}
+body.shared-page-mode main {
+  max-width: 900px;
+  padding-top: 28px;
+  padding-bottom: 48px;
+}
 [data-tab-panel="pages-shared"] {
   background-image: linear-gradient(90deg, var(--brand), var(--accent-sky), var(--accent-violet));
   background-repeat: no-repeat;
