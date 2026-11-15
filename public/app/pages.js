@@ -214,10 +214,78 @@ export async function openPage(id) {
   renderEditor();
 }
 
-export async function openPageByToken(token) {
+/**
+ * The tokens of the shared pages the reader has walked through, most recent
+ * last. A shared view has no sidebar, so this is the only record of where the
+ * reader came from and `← Back` steps through it. It is mirrored into browser
+ * history, so the device back gesture and a refresh keep the reader in place
+ * instead of dropping them out of the page.
+ */
+let sharedTrail = [];
+
+/** The walk so far, for the browser history entry of the current page. */
+function sharedHistoryState() {
+  const token = sharedTrail[sharedTrail.length - 1];
+  return token ? { pgShared: { token, trail: sharedTrail.slice() } } : null;
+}
+
+function syncSharedHistory(mode, token) {
+  const history = globalThis.window?.history;
+  if (!history || mode === "none") return;
+  const url = `?page=${encodeURIComponent(token)}`;
+  if (mode === "replace") history.replaceState(sharedHistoryState(), "", url);
+  else history.pushState(sharedHistoryState(), "", url);
+}
+
+/**
+ * Open a shared page by token. `history` decides how the walk is recorded:
+ * `replace` starts a fresh walk (the entry page of a share link), `push` adds a
+ * step (a subpage link or a breadcrumb), and `none` restores a page the browser
+ * already navigated to. A subpage link and a breadcrumb step both go through
+ * here, so the trail is a true history.
+ */
+export async function openPageByToken(token, options = {}) {
   const data = await fetchJson(`${PAGES_API}&action=shared&token=${encodeURIComponent(token)}`);
   pagesState().shared = { page: data.page, breadcrumb: data.breadcrumb || [], linkedPages: data.linkedPages || [] };
+  const mode = options.history || "push";
+  if (mode === "replace") sharedTrail = [token];
+  else if (mode === "push" && sharedTrail[sharedTrail.length - 1] !== token) sharedTrail.push(token);
+  syncSharedHistory(mode, token);
   return data;
+}
+
+/** True when the reader reached the current page from another one. */
+export function canGoBackShared() {
+  return sharedTrail.length > 1;
+}
+
+async function reopenSharedPage(token) {
+  await openPageByToken(token, { history: "none" });
+  renderSharedPage();
+}
+
+/** Step back to the page the reader came from, if there is one. */
+export async function goBackShared() {
+  if (sharedTrail.length <= 1) return;
+  const history = globalThis.window?.history;
+  // Handing the step to the browser keeps its history in sync with the trail;
+  // `handleSharedPopState` reopens the page it lands on.
+  if (history && typeof history.back === "function") {
+    history.back();
+    return;
+  }
+  sharedTrail.pop();
+  await reopenSharedPage(sharedTrail[sharedTrail.length - 1]);
+}
+
+/** Reopen the page the browser navigated back (or forward) to. */
+export function handleSharedPopState(event) {
+  if (state.currentTab !== "pages-shared") return;
+  const shared = event?.state?.pgShared;
+  const token = shared?.token || new URLSearchParams(globalThis.location?.search || "").get("page");
+  if (!token) return;
+  if (Array.isArray(shared?.trail) && shared.trail.length) sharedTrail = shared.trail.slice();
+  reopenSharedPage(token).catch(showError);
 }
 
 async function createPage(parentId) {
@@ -433,7 +501,10 @@ function blockText(block, editable, placeholder) {
 function renderReadonlySubpageLink(block, child, title) {
   const token = findPageShareToken(block.pageId) || child?.share_token;
   if (!token) return `<span class="pg-subpage-link pg-subpage-static">${escapeHtml(title)}</span>`;
-  return `<a class="pg-subpage-link" href="?page=${encodeURIComponent(token)}">${escapeHtml(title)}</a>`;
+  // `data-pg-shared-token` lets the shared view open the subpage in place and
+  // remember the page it came from, so "← Back" works. The href keeps plain
+  // navigation (and open-in-new-tab) working without JavaScript.
+  return `<a class="pg-subpage-link" href="?page=${encodeURIComponent(token)}" data-pg-shared-token="${escapeHtml(token)}">${escapeHtml(title)}</a>`;
 }
 
 function renderBlock(block, editable) {
@@ -991,11 +1062,23 @@ export function renderSharedPage() {
     return;
   }
   const { page, breadcrumb } = shared;
+  // The trail is the reader's only route back to a parent: each step above the
+  // current page carries its own share token, so it becomes a link. A crumb with
+  // no token (or the current page, which is the last one) stays plain text.
   const trail = breadcrumb.length > 1
-    ? `<p class="pg-shared-trail">${breadcrumb.map((crumb) => escapeHtml(crumb.title || "Untitled")).join(" › ")}</p>`
+    ? `<p class="pg-shared-trail">${breadcrumb.map((crumb, index) => {
+        const isCurrent = index === breadcrumb.length - 1;
+        const label = escapeHtml(crumb.title || "Untitled");
+        if (isCurrent || !crumb.share_token) return `<span class="pg-shared-crumb">${label}</span>`;
+        return `<a class="pg-shared-crumb pg-shared-crumb-link" href="?page=${encodeURIComponent(crumb.share_token)}" data-pg-shared-token="${escapeHtml(crumb.share_token)}">${label}</a>`;
+      }).join('<span class="pg-shared-crumb-sep" aria-hidden="true"> › </span>')}</p>`
+    : "";
+  const back = canGoBackShared()
+    ? `<button type="button" class="pg-shared-back" id="pg-shared-back">← Back</button>`
     : "";
   container.innerHTML = `
     <article class="pg-shared-card">
+      ${back}
       ${trail}
       <h2 class="pg-shared-title">${escapeHtml(page.title || "Untitled")}</h2>
       <p class="pg-shared-meta">Shared by ${escapeHtml(page.created_by_member_name)} · read-only</p>
@@ -1005,6 +1088,23 @@ export function renderSharedPage() {
   if (!container.dataset.pgBound) {
     container.dataset.pgBound = "true";
     container.addEventListener("click", (event) => {
+      const back = event.target.closest("#pg-shared-back");
+      if (back) {
+        goBackShared().catch(showError);
+        return;
+      }
+      const crumb = event.target.closest("[data-pg-shared-token]");
+      if (crumb) {
+        // Let a modifier-click open a new tab the way a plain link would.
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+        // A trail step or a subpage link is a page change, not a full reload, so
+        // the trail keeps the pages the reader passed through.
+        event.preventDefault();
+        openPageByToken(crumb.dataset.pgSharedToken, { history: "push" })
+          .then(renderSharedPage)
+          .catch(showError);
+        return;
+      }
       const collapse = event.target.closest("[data-pg-collapse]");
       if (!collapse) return;
       const found = findBlock(pagesState().shared?.page?.content || [], collapse.dataset.pgCollapse);

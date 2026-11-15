@@ -188,12 +188,17 @@ async function handlePages(request: any, response: any, url: URL): Promise<void>
     }
     const all = await listPageSummaries(db);
     const breadcrumb = buildBreadcrumb(all, page.id);
-    // The subpage blocks carry only a page id; the shared view needs each
-    // linked subpage's own share link so a reader can open it, so fetch those
-    // tokens explicitly (the summary list deliberately omits them).
+    // A subpage block carries only a page id, so the shared view needs the
+    // linked subpages' own share links to open them, and the breadcrumb needs
+    // its own so the trail can be walked back up. One query covers both: fetch
+    // the tokens for every id the view can reach, then split them by role.
     const linkedIds = [...collectSubpageIds(page.content)];
-    const linkedPages = await listPageShareLinks(db, linkedIds);
-    sendJson(response, 200, { ok: true, page, breadcrumb, linkedPages });
+    const trailIds = breadcrumb.slice(0, -1).map((crumb) => crumb.id);
+    const withTokens = await listPageShareLinks(db, [...linkedIds, ...trailIds]);
+    const byId = new Map(withTokens.map((row) => [row.id, row]));
+    const linkedPages = linkedIds.map((id) => byId.get(id)).filter(Boolean);
+    const trail = breadcrumb.map((crumb) => ({ ...crumb, share_token: byId.get(crumb.id)?.share_token }));
+    sendJson(response, 200, { ok: true, page, breadcrumb: trail, linkedPages });
     return;
   }
 

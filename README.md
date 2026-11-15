@@ -261,6 +261,15 @@ dashboard archive. Both only appear once the member is authenticated.
   dashboard chrome (brand bar, Telegram login, nav tabs, Refresh, footer) is
   hidden, so a visitor who holds only the link sees the page content and nothing
   else.
+- **Moving around a shared page.** A shared page has no sidebar, so its own
+  links are the only way around it. A `subpage` block opens the child page, and
+  a trail above the title — `Parent › Child` — is clickable, so a reader can
+  step back up. A **← Back** control appears once the reader has moved and
+  returns to the page they came from. Each step is pushed onto browser history
+  with its own `?page=<token>` URL, so the device back gesture and a refresh
+  keep the reader in place instead of dropping them out of the page. Every
+  ancestor's share token is sent with the page, so the trail can always be
+  walked back to the page the visitor was given.
 - **Blocks and toggle headings.** The page body is a JSON array of blocks
   (`paragraph`, `heading`, `toggle`, `subpage`, `image`, `table`). A `toggle`
   owns the blocks nested beneath it and collapses on click. Plain text is the

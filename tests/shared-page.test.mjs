@@ -104,7 +104,7 @@ test("a share link selects the page panel before the page request resolves", () 
   // panel is selected (and the loading state shown) first, then the page lands.
   const branch = main.slice(main.indexOf("if (initialShareToken)"));
   const switchAt = branch.indexOf('switchTab("pages-shared")');
-  const fetchAt = branch.indexOf("openPageByToken(initialShareToken)");
+  const fetchAt = branch.indexOf("openPageByToken(initialShareToken");
   assert.notEqual(switchAt, -1, "the share branch must select the shared panel");
   assert.notEqual(fetchAt, -1, "the share branch must still load the page by token");
   assert.ok(
