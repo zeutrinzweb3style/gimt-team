@@ -412,3 +412,28 @@ create table if not exists public.spam_reports (
 
 create index if not exists spam_reports_member_date_idx on public.spam_reports(member_id, work_date_utc desc);
 create index if not exists spam_reports_reported_at_idx on public.spam_reports(reported_at_utc desc);
+
+-- Hierarchical pages: a Notion-style tree of pages and nested subpages.
+-- `parent_id` is a self-reference (null = a top-level/main page), so the whole
+-- hierarchy lives in one table and moves with a single column update.
+--
+-- `share_token` is the unguessable key in a page's shareable link. Every page
+-- gets one at creation, so a link can be shared before the page is finished.
+-- `content` holds the editor blocks (headings, paragraphs, nested toggles) as
+-- JSON so the shape can evolve without a migration.
+create table if not exists public.pages (
+  id uuid primary key default gen_random_uuid(),
+  parent_id uuid references public.pages(id) on delete cascade,
+  title text not null default '',
+  content jsonb not null default '[]'::jsonb,
+  share_token text not null unique,
+  created_by_member_id text not null,
+  created_by_member_name text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by_member_id text
+);
+
+create index if not exists pages_parent_idx on public.pages(parent_id);
+create index if not exists pages_share_token_idx on public.pages(share_token);
+create index if not exists pages_updated_at_idx on public.pages(updated_at desc);

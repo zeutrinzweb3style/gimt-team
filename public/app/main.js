@@ -3,13 +3,14 @@
 
 
 import { renderActivity } from "./activity.js";
-import { initTelegramAuth } from "./auth.js";
+import { initTelegramAuth, onIdentityChange } from "./auth.js";
 import { loadCommunitySummary } from "./community-summary.js";
 import { loadIssueCategories, normalizeIssueCategory } from "./issue-categories.js";
 import { defaultIssueRange, getIssueUrlParams, loadIssueReport, openIssueReport, updateIssueUrlParams } from "./issue-report.js";
 import { closeMemberDetail, openMemberDetail } from "./member-detail.js";
 import { defaultMemberRange, getMemberUrlParams, initMemberProfileControls, loadMemberProfile, openMemberProfile, renderMemberProfileHeader, showMemberTabButton, updateMemberUrlParams } from "./member-profile.js";
 import { loadMembers } from "./members.js";
+import { initPages, loadPages, openPageByToken, renderSharedPage } from "./pages.js";
 import { loadProof } from "./proof.js";
 import { initProofReports } from "./proof-reports.js";
 import { state } from "./state.js";
@@ -20,6 +21,16 @@ import { $, $all, copyTextToButton, debounce, memberLink, wireSorting } from "./
 
 export async function init() {
   initDefaultDates();
+  initPages();
+  // The Pages tab only makes sense for a signed-in member; it appears and
+  // disappears with the Telegram login.
+  const pagesTab = $("#pages-tab-btn");
+  const homePagesBtn = $("#home-pages-btn");
+  onIdentityChange((name) => {
+    pagesTab?.classList.toggle("hidden", !name);
+    homePagesBtn?.classList.toggle("hidden", !name);
+    if (!name && state.currentTab === "pages") switchTab("home");
+  });
   initTelegramAuth();
   $("#activity-member").setAttribute("data-members-select", "1");
   $("#proof-member").setAttribute("data-members-select", "1");
@@ -40,6 +51,10 @@ export async function init() {
   initProofReports();
   initMemberProfileControls();
   $("#refresh-btn").addEventListener("click", refreshCurrent);
+  // Pages is reachable from the home directory once signed in, because the
+  // welcome flow hides the tab bar. From inside Pages, Home goes back.
+  $("#home-pages-btn")?.addEventListener("click", () => switchTab("pages"));
+  $("#pages-back-home")?.addEventListener("click", () => switchTab("home"));
   $("#proof-reports-copy-link").addEventListener("click", () => {
     const reportUrl = new URL(window.location.href);
     reportUrl.search = "";
@@ -295,7 +310,14 @@ export async function init() {
   const initialIssue = getIssueUrlParams();
   const initialUrl = getMemberUrlParams();
   const initialReports = new URLSearchParams(window.location.search).get("reports") === "1";
-  if (initialIssue.category) {
+  const initialShareToken = new URLSearchParams(window.location.search).get("page");
+  if (initialShareToken) {
+    // A page share link opens the page by itself, with no login and no sidebar.
+    document.body.dataset.homeContinued = "true";
+    openPageByToken(initialShareToken)
+      .then(() => { renderSharedPage(); switchTab("pages-shared"); })
+      .catch(() => { renderSharedPage(); switchTab("pages-shared"); });
+  } else if (initialIssue.category) {
     const range = (initialIssue.from && initialIssue.to)
       ? { from: initialIssue.from, to: initialIssue.to }
       : defaultIssueRange();

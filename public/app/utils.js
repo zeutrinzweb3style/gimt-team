@@ -187,6 +187,25 @@ export async function fetchJson(path) {
   return body;
 }
 
+export async function postJson(path, payload) {
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(payload ?? {})
+  });
+  let body = null;
+  try {
+    body = await r.json();
+  } catch (_error) {
+    body = null;
+  }
+  if (!r.ok || (body && body.ok === false)) {
+    throw new Error(body?.error || `${path} → ${r.status}`);
+  }
+  return body;
+}
+
 export function setLastUpdated() {
   $("#last-updated").textContent = `Updated ${new Date().toLocaleTimeString()}`;
 }
