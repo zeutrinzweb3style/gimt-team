@@ -89,7 +89,10 @@ globalThis.fetch = async (input, init = {}) => {
       found = [...found].sort((a, b) => (a[field] > b[field] ? 1 : a[field] < b[field] ? -1 : 0));
       if (dir === "desc") found.reverse();
     }
-    return jsonResponse(found.map((row) => ({ ...row })));
+    const selected = searchParams.get("select");
+    return jsonResponse(found.map((row) => selected && selected !== "*"
+      ? Object.fromEntries(selected.split(",").map((field) => [field, row[field]]))
+      : { ...row }));
   }
 
   if (method === "POST") {
@@ -204,6 +207,9 @@ test("a signed-in member creates a page and sees it in the tree", async () => {
   const list = await call(`${API}&action=list`, { cookie });
   assert.equal(list.json().pages.length, 1);
   assert.equal(list.json().tree[0].title, "Main Project Report");
+  assert.deepEqual(list.json().member, { member_id: "betz", member_name: "Betz" });
+  assert.equal("content" in list.json().pages[0], false);
+  assert.equal("share_token" in list.json().pages[0], false);
 });
 
 test("every member sees all pages, but only the creator can edit one", async () => {

@@ -313,67 +313,74 @@ export async function init() {
     if (e.key === "Escape" && state.memberDetail.open) closeMemberDetail();
   });
 
-  // Initial route. The issue report owns its own URL (?issue=...&from=...&to=...)
-  // so a shared report link opens straight to that report.
-  //
-  // The renderers below read member names out of `state.members`, so wait for the
-  // startup fetches first. They were started (not awaited) up top, so this is a
-  // parallel wait rather than two sequential round trips, and the listeners above
-  // are already live, so the shell responds while these are in flight.
-  await Promise.all([membersReady, categoriesReady]);
+  // Resolve the initial route without holding the first screen behind background
+  // requests. Home, reports and public page links can render immediately; only
+  // member-dependent deep links wait for the member directory they render from.
   const initialIssue = getIssueUrlParams();
   const initialUrl = getMemberUrlParams();
   const initialReports = new URLSearchParams(window.location.search).get("reports") === "1";
   const initialShareToken = new URLSearchParams(window.location.search).get("page");
-  if (initialShareToken) {
-    // A page share link opens the page by itself, with no login and no sidebar.
-    document.body.dataset.homeContinued = "true";
-    openPageByToken(initialShareToken)
-      .then(() => { renderSharedPage(); switchTab("pages-shared"); })
-      .catch(() => { renderSharedPage(); switchTab("pages-shared"); });
-  } else if (initialIssue.category) {
-    const range = (initialIssue.from && initialIssue.to)
-      ? { from: initialIssue.from, to: initialIssue.to }
-      : defaultIssueRange();
-    state.issueReport.category = initialIssue.category;
-    state.issueReport.from = range.from;
-    state.issueReport.to = range.to;
-    if (!initialIssue.from || !initialIssue.to) {
-      updateIssueUrlParams({
-        category: initialIssue.category,
-        from: range.from,
-        to: range.to,
-        replace: true
-      });
+  const searchParams = new URLSearchParams(window.location.search);
+  const hasIssueQuery = Boolean(searchParams.get("issue") || searchParams.get("category"));
+  const resolveInitialRoute = async () => {
+    if (initialShareToken) {
+      // A page share link opens the page by itself, with no login and no sidebar.
+      document.body.dataset.homeContinued = "true";
+      openPageByToken(initialShareToken)
+        .then(() => { renderSharedPage(); switchTab("pages-shared"); })
+        .catch(() => { renderSharedPage(); switchTab("pages-shared"); });
+    } else {
+      // Issue links use the canonical category list; defer only that deep link,
+      // never the ordinary Home screen, until the category request completes.
+      const issue = hasIssueQuery ? await categoriesReady.then(getIssueUrlParams) : initialIssue;
+      if (issue.category) {
+        await membersReady;
+        const range = (issue.from && issue.to)
+          ? { from: issue.from, to: issue.to }
+          : defaultIssueRange();
+        state.issueReport.category = issue.category;
+        state.issueReport.from = range.from;
+        state.issueReport.to = range.to;
+        if (!issue.from || !issue.to) {
+          updateIssueUrlParams({
+            category: issue.category,
+            from: range.from,
+            to: range.to,
+            replace: true
+          });
+        }
+        switchTab("issue-report");
+      } else if (initialUrl.memberId) {
+        await membersReady;
+        // ?member=... opens Member Profile directly so the shareable link works.
+        const range = (initialUrl.from && initialUrl.to)
+          ? { from: initialUrl.from, to: initialUrl.to }
+          : defaultMemberRange();
+        state.memberProfile.memberId = initialUrl.memberId;
+        state.memberProfile.from = range.from;
+        state.memberProfile.to = range.to;
+        state.memberProfile.view = initialUrl.view;
+        if (!initialUrl.from || !initialUrl.to) {
+          updateMemberUrlParams({
+            memberId: initialUrl.memberId,
+            from: range.from,
+            to: range.to,
+            view: initialUrl.view,
+            replace: true
+          });
+        }
+        showMemberTabButton(true);
+        switchTab("member");
+      } else if (initialReports) {
+        // ?reports=1 opens the dashboard archive without changing the clean member-review flow.
+        document.body.dataset.homeContinued = "true";
+        switchTab("proof");
+      } else {
+        switchTab("home");
+      }
     }
-    switchTab("issue-report");
-  } else if (initialUrl.memberId) {
-    // ?member=... opens Member Profile directly so the shareable link works.
-    const range = (initialUrl.from && initialUrl.to)
-      ? { from: initialUrl.from, to: initialUrl.to }
-      : defaultMemberRange();
-    state.memberProfile.memberId = initialUrl.memberId;
-    state.memberProfile.from = range.from;
-    state.memberProfile.to = range.to;
-    state.memberProfile.view = initialUrl.view;
-    if (!initialUrl.from || !initialUrl.to) {
-      updateMemberUrlParams({
-        memberId: initialUrl.memberId,
-        from: range.from,
-        to: range.to,
-        view: initialUrl.view,
-        replace: true
-      });
-    }
-    showMemberTabButton(true);
-    switchTab("member");
-  } else if (initialReports) {
-    // ?reports=1 opens the dashboard archive without changing the clean member-review flow.
-    document.body.dataset.homeContinued = "true";
-    switchTab("proof");
-  } else {
-    switchTab("home");
-  }
+  };
+  resolveInitialRoute().catch((error) => console.error("Failed to resolve initial route", error));
   setInterval(refreshCurrent, 60_000);
 }
 
