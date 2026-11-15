@@ -27,6 +27,8 @@
       };
     </script>
     <link rel="stylesheet" href="/styles.css" />
+    <!-- Must load before any other script so window.Telegram.WebApp is ready. -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body class="home-welcome-mode min-h-full bg-gradient-to-br from-slate-50 via-teal-50 to-sky-50 text-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950 dark:text-slate-100">
     <header class="border-b border-teal-100 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur sticky top-0 z-20 shadow-sm">
@@ -38,6 +40,17 @@
         </div>
         <div class="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
           <span id="last-updated">—</span>
+          <div id="telegram-auth" class="hidden items-center gap-2">
+            <button id="telegram-login-btn" type="button" class="px-2.5 py-1 rounded border border-sky-500/60 bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200 font-medium hover:bg-sky-100 dark:hover:bg-sky-900/70">
+              Log in with Telegram
+            </button>
+            <span id="telegram-identity" class="hidden items-center gap-1.5">
+              <span class="text-emerald-600 dark:text-emerald-400 font-medium" id="telegram-identity-name"></span>
+              <button id="telegram-logout-btn" type="button" class="px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800" title="Disconnect">
+                Disconnect
+              </button>
+            </span>
+          </div>
           <button id="refresh-btn" class="px-2.5 py-1 rounded border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-medium">
             Refresh
           </button>
