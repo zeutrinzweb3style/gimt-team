@@ -1662,6 +1662,7 @@ table.pg-md-table td:last-child { border-right: none; }
 .dark .pg-toggle-children { border-color: rgb(51 65 85); }
 .pg-block-subpage { align-items: center; padding: 6px 4px; border-radius: 8px; }
 .pg-block-subpage:hover { background: rgb(240 253 250); }
+.pg-block-subpage:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .dark .pg-block-subpage:hover { background: rgb(30 41 59); }
 .pg-subpage-link {
   border: none; background: transparent; cursor: pointer; color: var(--brand-strong);
@@ -1719,12 +1720,6 @@ textarea.pg-image-caption:focus { background: rgb(248 250 252); border-radius: 6
 .pg-image-btn.is-active { background: rgb(13 148 136); color: white; }
 .pg-image-btn-danger:hover { color: rgb(185 28 28); background: rgb(254 226 226); }
 
-.pg-add-block {
-  margin-top: 12px; width: 100%; text-align: left;
-  border: 1px dashed rgb(203 213 225); background: transparent; cursor: pointer;
-  border-radius: 10px; padding: 10px; color: rgb(100 116 139); font-size: 13px;
-}
-.pg-add-block:hover { border-color: rgb(13 148 136); color: rgb(13 148 136); }
 .pg-empty { color: rgb(100 116 139); font-size: 14px; padding: 24px 4px; }
 .pg-editor-trail { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 6px; font-size: 12px; }
 .pg-trail-link {
