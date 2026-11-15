@@ -511,3 +511,140 @@ test("an oversized image is refused with 413", async () => {
   assert.equal(response.statusCode, 413);
   assert.equal(uploads.length, 0);
 });
+
+// ------------------------------------------------------------ table block --
+
+test("a table block keeps its grid and header flag", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    body: {
+      title: "Metrics",
+      content: [
+        { id: "t1", type: "table", table: { header: true, rows: [["Metric", "Value"], ["Verified wallets", "51"]] } }
+      ]
+    }
+  });
+
+  assert.equal(created.statusCode, 201);
+  const [block] = created.json().page.content;
+  assert.equal(block.type, "table");
+  assert.equal(block.table.header, true);
+  assert.deepEqual(block.table.rows, [["Metric", "Value"], ["Verified wallets", "51"]]);
+});
+
+test("a table block pads ragged rows into a rectangle", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    body: {
+      title: "Ragged",
+      content: [{ id: "t1", type: "table", table: { rows: [["a"], ["b", "c", "d"], ["e", "f"]] } }]
+    }
+  });
+
+  const [block] = created.json().page.content;
+  // Every row is widened to the widest row so the renderer always sees a grid.
+  assert.deepEqual(block.table.rows, [["a", "", ""], ["b", "c", "d"], ["e", "f", ""]]);
+  assert.equal(block.table.header, false);
+});
+
+test("a table block with no usable rows is dropped", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    body: {
+      title: "Empty",
+      content: [
+        { id: "no-rows", type: "table", table: { rows: [] } },
+        { id: "bad-shape", type: "table", table: { rows: "nope" } },
+        { id: "no-table", type: "table" },
+        { id: "zero-col", type: "table", table: { rows: [[], []] } },
+        { id: "keep", type: "paragraph", text: "hi" }
+      ]
+    }
+  });
+
+  assert.deepEqual(created.json().page.content.map((b) => b.id), ["keep"]);
+});
+
+test("a table block is bounded in rows, columns and cell length", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const cell = "x".repeat(2000);
+  const rows = Array.from({ length: 500 }, () => Array.from({ length: 50 }, () => cell));
+
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    body: { title: "Huge", content: [{ id: "t1", type: "table", table: { rows } }] }
+  });
+
+  const [block] = created.json().page.content;
+  assert.equal(block.table.rows.length, 100);
+  assert.equal(block.table.rows[0].length, 20);
+  assert.equal(block.table.rows[0][0].length, 500);
+});
+
+test("a table block coerces non-string cells and a non-boolean header", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    body: {
+      title: "Hostile",
+      content: [
+        { id: "t1", type: "table", table: { header: "yes", rows: [[42, null, ["nested"], { a: 1 }, "ok"]] } }
+      ]
+    }
+  });
+
+  const [block] = created.json().page.content;
+  // Only strings survive as cells; a truthy-but-not-true header stays off.
+  assert.deepEqual(block.table.rows, [["", "", "", "", "ok"]]);
+  assert.equal(block.table.header, false);
+});
+
+test("a table block survives a round trip through update", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const id = (await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    body: { title: "Doc", content: [{ id: "p", type: "paragraph", text: "before" }] }
+  })).json().page.id;
+
+  const updated = await call(`${API}&action=update&id=${id}`, {
+    method: "PATCH", cookie,
+    body: {
+      content: [{ id: "t1", type: "table", table: { header: true, rows: [["A", "B"], ["1", "2"]] } }]
+    }
+  });
+
+  const [block] = updated.json().page.content;
+  assert.equal(block.type, "table");
+  assert.equal(block.table.header, true);
+  assert.deepEqual(block.table.rows, [["A", "B"], ["1", "2"]]);
+});
+
+test("a table block nested inside a toggle keeps its grid", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    body: {
+      title: "Nested",
+      content: [
+        {
+          id: "tog", type: "toggle", text: "Section",
+          children: [{ id: "t1", type: "table", table: { rows: [["x", "y"]] } }]
+        }
+      ]
+    }
+  });
+
+  const [toggle] = created.json().page.content;
+  assert.equal(toggle.children[0].type, "table");
+  assert.deepEqual(toggle.children[0].table.rows, [["x", "y"]]);
+});

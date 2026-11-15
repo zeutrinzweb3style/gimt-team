@@ -157,7 +157,7 @@ export type SpamReport = {
  */
 export type PageBlock = {
   id: string;
-  type: "paragraph" | "heading" | "toggle" | "subpage" | "image";
+  type: "paragraph" | "heading" | "toggle" | "subpage" | "image" | "table";
   /** Heading level for `heading`/`toggle` blocks (1–3). */
   level?: 1 | 2 | 3;
   /** Paragraph/heading text. For an `image` block this is the caption. */
@@ -167,7 +167,19 @@ export type PageBlock = {
   pageId?: string;
   /** For `image` blocks: the stored object and how to present it. */
   image?: PageImage;
+  /** For `table` blocks: a rectangular grid of plain-text cells. */
+  table?: PageTable;
   children?: PageBlock[];
+};
+
+/**
+ * A table block. `rows` is always rectangular — every row has the same number
+ * of cells — so the renderer can index a cell without a bounds check. `header`
+ * marks the first row as a header row.
+ */
+export type PageTable = {
+  rows: string[][];
+  header: boolean;
 };
 
 /** How wide an image renders relative to the page column. */

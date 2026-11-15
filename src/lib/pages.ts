@@ -1,4 +1,4 @@
-import { eq, order, params, type ImageAlign, type ImageWidth, type Page, type PageBlock, type PageImage, type SupabaseRestClient } from "./supabase.js";
+import { eq, order, params, type ImageAlign, type ImageWidth, type Page, type PageBlock, type PageImage, type PageTable, type SupabaseRestClient } from "./supabase.js";
 
 // Hierarchical pages (Notion-style). A page is a row in `public.pages`; nesting
 // is a self-reference through `parent_id`. Every page carries an unguessable
@@ -25,6 +25,10 @@ const MAX_BLOCK_DEPTH = 6;
 const MAX_BLOCKS_PER_LEVEL = 500;
 const MAX_TEXT_LENGTH = 20000;
 const MAX_CAPTION_LENGTH = 500;
+/** A table is bounded on both axes so a crafted grid cannot exhaust memory. */
+const MAX_TABLE_ROWS = 100;
+const MAX_TABLE_COLUMNS = 20;
+const MAX_CELL_LENGTH = 500;
 
 const IMAGE_WIDTHS: readonly string[] = ["small", "medium", "large", "full"];
 const IMAGE_ALIGNS: readonly string[] = ["left", "center", "right"];
@@ -66,6 +70,37 @@ function isAllowedImageUrl(url: string): boolean {
   }
 }
 
+/**
+ * Normalise the `table` payload of a table block. Cells are coerced to strings
+ * (a non-string cell becomes empty), the grid is clamped to the row and column
+ * ceilings, and every row is padded to the widest one so the stored grid is
+ * always rectangular. Returns null when no usable grid remains.
+ */
+function sanitizeTable(input: unknown): PageTable | null {
+  if (!input || typeof input !== "object") return null;
+  const rows = (input as Record<string, unknown>).rows;
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  const grid: string[][] = [];
+  let width = 0;
+  for (const row of rows.slice(0, MAX_TABLE_ROWS)) {
+    if (!Array.isArray(row)) continue;
+    const cells = row.slice(0, MAX_TABLE_COLUMNS).map((cell) =>
+      typeof cell === "string" ? cell.slice(0, MAX_CELL_LENGTH) : ""
+    );
+    if (cells.length === 0) continue;
+    width = Math.max(width, cells.length);
+    grid.push(cells);
+  }
+  if (grid.length === 0 || width === 0) return null;
+
+  for (const row of grid) {
+    while (row.length < width) row.push("");
+  }
+
+  return { rows: grid, header: (input as Record<string, unknown>).header === true };
+}
+
 export function sanitizeBlocks(input: unknown, depth = 0): PageBlock[] {
   if (depth > MAX_BLOCK_DEPTH || !Array.isArray(input)) return [];
 
@@ -74,7 +109,7 @@ export function sanitizeBlocks(input: unknown, depth = 0): PageBlock[] {
     if (!raw || typeof raw !== "object") continue;
     const candidate = raw as Record<string, unknown>;
     const type = candidate.type;
-    if (type !== "paragraph" && type !== "heading" && type !== "toggle" && type !== "subpage" && type !== "image") continue;
+    if (type !== "paragraph" && type !== "heading" && type !== "toggle" && type !== "subpage" && type !== "image" && type !== "table") continue;
 
     const text = typeof candidate.text === "string" ? candidate.text.slice(0, MAX_TEXT_LENGTH) : "";
     const level = candidate.level === 1 || candidate.level === 2 || candidate.level === 3 ? candidate.level : undefined;
@@ -89,6 +124,18 @@ export function sanitizeBlocks(input: unknown, depth = 0): PageBlock[] {
         image
       };
       blocks.push(block);
+      continue;
+    }
+
+    if (type === "table") {
+      const table = sanitizeTable(candidate.table);
+      if (!table) continue;
+      blocks.push({
+        id: typeof candidate.id === "string" && candidate.id ? candidate.id.slice(0, 64) : crypto.randomUUID(),
+        type,
+        text: "",
+        table
+      });
       continue;
     }
 

@@ -12,6 +12,7 @@ const PAGES_API = "/api/web/members?resource=pages";
 const SLASH_COMMANDS = [
   { command: "page", label: "Subpage", hint: "Create a nested subpage", icon: "📄" },
   { command: "image", label: "Image", hint: "Upload an image from your device", icon: "🖼" },
+  { command: "table", label: "Table", hint: "Grid for metrics and figures", icon: "▦" },
   { command: "heading", label: "Toggle heading", hint: "Collapsible section", icon: "▸" },
   { command: "h1", label: "Heading 1", hint: "Large heading", icon: "H1" },
   { command: "h2", label: "Heading 2", hint: "Medium heading", icon: "H2" },
@@ -20,6 +21,10 @@ const SLASH_COMMANDS = [
 
 const IMAGE_WIDTHS = ["small", "medium", "large", "full"];
 const IMAGE_ALIGNS = ["left", "center", "right"];
+
+/** Kept in step with the server ceilings in `src/lib/pages.ts`. */
+const TABLE_MAX_ROWS = 100;
+const TABLE_MAX_COLUMNS = 20;
 
 const IMAGE_WIDTH_LABEL = { small: "S", medium: "M", large: "L", full: "Full" };
 const IMAGE_ALIGN_ICON = { left: "⇤", center: "↔", right: "⇥" };
@@ -362,6 +367,10 @@ function renderBlock(block, editable) {
     return renderImageBlock(block, editable);
   }
 
+  if (block.type === "table") {
+    return renderTableBlock(block, editable);
+  }
+
   return `
     <div class="pg-block" data-pg-block="${escapeHtml(block.id)}">
       ${blockText(block, editable)}
@@ -410,6 +419,63 @@ function renderImageBlock(block, editable) {
         ${caption}
       </figure>
       ${toolbar}
+    </div>`;
+}
+
+// ------------------------------------------------------------ table block ----
+
+/**
+ * A rectangular view of a table block's grid. A block being edited in the
+ * browser can be momentarily ragged (a column was just added), so every row is
+ * padded to the widest one before rendering.
+ */
+function tableGrid(block) {
+  const rows = Array.isArray(block.table?.rows) ? block.table.rows : [];
+  const width = rows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0);
+  return {
+    header: block.table?.header === true,
+    width,
+    rows: rows.map((row) => {
+      const cells = Array.isArray(row) ? row.map((cell) => (typeof cell === "string" ? cell : "")) : [];
+      while (cells.length < width) cells.push("");
+      return cells;
+    })
+  };
+}
+
+function renderTableBlock(block, editable) {
+  const id = escapeHtml(block.id);
+  const { header, rows } = tableGrid(block);
+
+  if (!editable) {
+    const head = header && rows.length
+      ? `<thead><tr>${rows[0].map((cell) => `<th>${escapeHtml(cell)}</th>`).join("")}</tr></thead>`
+      : "";
+    const bodyRows = header ? rows.slice(1) : rows;
+    const body = `<tbody>${bodyRows.map((row) =>
+      `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+    return `
+      <div class="pg-block pg-block-table" data-pg-block="${id}">
+        <div class="pg-table-wrap"><table class="pg-table">${head}${body}</table></div>
+      </div>`;
+  }
+
+  const body = rows.map((row, r) =>
+    `<tr>${row.map((cell, c) =>
+      `<td><input class="pg-table-input" type="text" value="${escapeHtml(cell)}"
+        data-pg-cell="${id}:${r}:${c}" aria-label="Row ${r + 1}, column ${c + 1}" /></td>`).join("")}</tr>`
+  ).join("");
+
+  return `
+    <div class="pg-block pg-block-table" data-pg-block="${id}">
+      <div class="pg-table-wrap"><table class="pg-table pg-table-editing">${body}</table></div>
+      <div class="pg-table-toolbar">
+        <button type="button" class="pg-table-btn" data-pg-table-row="${id}" title="Add a row">＋ Row</button>
+        <button type="button" class="pg-table-btn" data-pg-table-col="${id}" title="Add a column">＋ Column</button>
+        <button type="button" class="pg-table-btn${header ? " is-active" : ""}" data-pg-table-header="${id}"
+          aria-pressed="${header}" title="Toggle header row">Header</button>
+        <button type="button" class="pg-table-btn pg-table-btn-danger" data-pg-remove="${id}" title="Delete table">✕</button>
+      </div>
     </div>`;
 }
 
@@ -561,6 +627,11 @@ async function applySlashCommand(blockId, command) {
     renderBlocks();
     pickImage(blockId);
     return;
+  } else if (command === "table") {
+    block.type = "table";
+    block.text = "";
+    block.table = { rows: [["", ""], ["", ""]], header: true };
+    delete block.children;
   } else if (command === "heading") {
     block.type = "toggle";
     block.level = 2;
@@ -618,6 +689,20 @@ function initEditorEvents() {
 
   editor.addEventListener("input", (event) => {
     const target = event.target;
+
+    // A table cell is a plain input, keyed "<blockId>:<row>:<column>".
+    const cellKey = target instanceof HTMLInputElement ? target.dataset.pgCell : undefined;
+    if (cellKey) {
+      const [blockId, row, column] = cellKey.split(":");
+      const found = findBlock(pagesState().working, blockId);
+      const cell = found?.block.table?.rows?.[Number(row)];
+      if (!cell) return;
+      cell[Number(column)] = target.value;
+      pagesState().dirty = true;
+      scheduleSave();
+      return;
+    }
+
     if (!(target instanceof HTMLTextAreaElement)) return;
 
     const captionId = target.dataset.pgCaption;
@@ -669,6 +754,41 @@ function initEditorEvents() {
   });
 
   editor.addEventListener("click", (event) => {
+    const addRow = event.target.closest("[data-pg-table-row]");
+    if (addRow) {
+      const found = findBlock(pagesState().working, addRow.dataset.pgTableRow);
+      const table = found?.block.table;
+      if (table && table.rows.length < TABLE_MAX_ROWS) {
+        table.rows.push(new Array(table.rows[0]?.length || 1).fill(""));
+        pagesState().dirty = true;
+        renderBlocks();
+        scheduleSave();
+      }
+      return;
+    }
+    const addCol = event.target.closest("[data-pg-table-col]");
+    if (addCol) {
+      const found = findBlock(pagesState().working, addCol.dataset.pgTableCol);
+      const table = found?.block.table;
+      if (table && (table.rows[0]?.length || 0) < TABLE_MAX_COLUMNS) {
+        for (const row of table.rows) row.push("");
+        pagesState().dirty = true;
+        renderBlocks();
+        scheduleSave();
+      }
+      return;
+    }
+    const headerBtn = event.target.closest("[data-pg-table-header]");
+    if (headerBtn) {
+      const found = findBlock(pagesState().working, headerBtn.dataset.pgTableHeader);
+      if (found?.block.table) {
+        found.block.table.header = !found.block.table.header;
+        pagesState().dirty = true;
+        renderBlocks();
+        scheduleSave();
+      }
+      return;
+    }
     const widthBtn = event.target.closest("[data-pg-img-width]");
     if (widthBtn) {
       const found = findBlock(pagesState().working, widthBtn.dataset.pgBlockId);
