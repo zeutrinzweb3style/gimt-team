@@ -174,8 +174,31 @@ export function wireSorting(tableSelector, sortRef, rerender) {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 20000;
+
+/**
+ * fetch() never gives up on its own. On a flaky mobile network, or inside the
+ * Telegram Web/Desktop iframe, a request can hang indefinitely, which left the
+ * UI on its "Loading…" placeholder forever. Abort it after a bounded wait so the
+ * caller can show an error and offer a retry.
+ */
+async function fetchWithTimeout(url, init = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`Request timed out after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function fetchJson(path) {
-  const r = await fetch(path, { headers: { accept: "application/json" } });
+  const r = await fetchWithTimeout(path, { headers: { accept: "application/json" } });
   if (!r.ok) {
     const deployHint = r.status === 404 && path.startsWith("/api/")
       ? " (API route not found. On Netlify, make sure netlify.toml and netlify/functions are deployed from the repository root; on Vercel, make sure the /api folder is included.)"
@@ -188,7 +211,7 @@ export async function fetchJson(path) {
 }
 
 export async function postJson(path, payload) {
-  const r = await fetch(path, {
+  const r = await fetchWithTimeout(path, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     credentials: "same-origin",

@@ -8,6 +8,7 @@ import {
   getPageById,
   getPageByShareToken,
   isValidShareToken,
+  listPageShareLinks,
   listPageSummaries,
   sanitizeBlocks,
   updatePage,
@@ -187,10 +188,11 @@ async function handlePages(request: any, response: any, url: URL): Promise<void>
     }
     const all = await listPageSummaries(db);
     const breadcrumb = buildBreadcrumb(all, page.id);
-    const linkedIds = collectSubpageIds(page.content);
-    const linkedPages = all
-      .filter((candidate) => linkedIds.has(candidate.id))
-      .map((candidate) => ({ id: candidate.id, title: candidate.title }));
+    // The subpage blocks carry only a page id; the shared view needs each
+    // linked subpage's own share link so a reader can open it, so fetch those
+    // tokens explicitly (the summary list deliberately omits them).
+    const linkedIds = [...collectSubpageIds(page.content)];
+    const linkedPages = await listPageShareLinks(db, linkedIds);
     sendJson(response, 200, { ok: true, page, breadcrumb, linkedPages });
     return;
   }

@@ -1455,6 +1455,7 @@ textarea.pg-h3 { font-size: 15.5px; }
   text-decoration-color: rgb(203 213 225); text-underline-offset: 3px;
 }
 .pg-subpage-link:hover { text-decoration-color: rgb(13 148 136); }
+.pg-retry { margin-top: 8px; }
 
 /* ---- image block ---- */
 .pg-block-image { flex-direction: column; align-items: stretch; padding: 6px 0; }

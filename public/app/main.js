@@ -30,6 +30,10 @@ export async function init() {
     pagesTab?.classList.toggle("hidden", !name);
     homePagesBtn?.classList.toggle("hidden", !name);
     if (!name && state.currentTab === "pages") switchTab("home");
+    // Opening Pages before the Telegram login lands fails with 401, and nothing
+    // used to retry, so the sidebar stayed on its error until another action.
+    // Reload once the session arrives.
+    if (name && !state.pages.loaded) loadPages().catch(() => {});
   });
   initTelegramAuth();
   $("#activity-member").setAttribute("data-members-select", "1");
