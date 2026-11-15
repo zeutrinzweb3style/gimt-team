@@ -445,6 +445,7 @@ function renderEditor() {
     </div>
     ${editable ? "" : '<p class="pg-readonly-note">Only the member who created this page can edit it.</p>'}
     <div class="pg-blocks" id="pages-blocks" contenteditable="false"></div>
+    ${editable ? '<button type="button" id="pages-add-block" class="pg-add-block">＋ Add a block</button>' : ""}
   `;
 
   renderBlocks();
@@ -452,6 +453,12 @@ function renderEditor() {
 
   $("#pages-share-btn")?.addEventListener("click", (event) => copyTextToButton(shareUrl.href, event.currentTarget));
   $("#pages-delete-btn")?.addEventListener("click", () => removeCurrentPage().catch(showError));
+  $("#pages-add-block")?.addEventListener("click", () => {
+    pagesState().working.push(newBlock("paragraph"));
+    pagesState().dirty = true;
+    renderBlocks();
+    scheduleSave();
+  });
   const titleEl = $("#pages-title");
   if (titleEl && editable) {
     titleEl.addEventListener("input", () => {
@@ -470,20 +477,6 @@ function renderBlocks() {
   const editable = canEdit(pagesState().current);
   container.innerHTML = pagesState().working.map((block) => renderBlock(block, editable)).join("");
   autosizeAll(container);
-}
-
-/**
- * Insert a paragraph into `list` at `at` and focus it. Enter is the only way to
- * add a block, so it calls this from every block type and the new line is always
- * the one the reader types into.
- */
-function insertParagraphAt(list, at) {
-  const block = newBlock("paragraph");
-  list.splice(at, 0, block);
-  pagesState().dirty = true;
-  renderBlocks();
-  scheduleSave();
-  $(`[data-pg-text="${block.id}"]`)?.focus();
 }
 
 function blockText(block, editable, placeholder) {
@@ -522,7 +515,7 @@ function renderBlock(block, editable) {
       ? `<button type="button" class="pg-subpage-link" data-pg-open="${escapeHtml(block.pageId || "")}">${escapeHtml(title)}</button>`
       : renderReadonlySubpageLink(block, child, title);
     return `
-      <div class="pg-block pg-block-subpage" data-pg-block="${escapeHtml(block.id)}" tabindex="${editable ? "0" : "-1"}">
+      <div class="pg-block pg-block-subpage" data-pg-block="${escapeHtml(block.id)}">
         <span class="pg-subpage-icon">📄</span>
         ${label}
         ${editable ? `<button type="button" class="pg-block-remove" data-pg-remove="${escapeHtml(block.id)}" title="Remove">✕</button>` : ""}
@@ -934,68 +927,24 @@ function initEditorEvents() {
 
   editor.addEventListener("keydown", (event) => {
     const target = event.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
     if (event.key === "Escape") { hideSlashMenu(); return; }
     if (event.key !== "Enter" || event.shiftKey) return;
-    // Enter is the only way to add a block, so it has to work from every kind of
-    // block — text, caption, table cell and the link-only subpage.
 
-    // A table cell is a plain input: Enter walks the grid and, from the last
-    // cell, leaves the table by adding a paragraph after it.
-    if (target instanceof HTMLInputElement) {
-      const cellKey = target.dataset.pgCell;
-      if (!cellKey) return;
-      const [blockId, row, column] = cellKey.split(":");
-      const found = findBlock(pagesState().working, blockId);
-      const grid = found?.block.table;
-      if (!found || !grid) return;
-      event.preventDefault();
-      const r = Number(row);
-      const c = Number(column);
-      if (c + 1 < (grid.rows[r]?.length || 0)) {
-        $(`[data-pg-cell="${blockId}:${r}:${c + 1}"]`)?.focus();
-      } else if (r + 1 < grid.rows.length) {
-        $(`[data-pg-cell="${blockId}:${r + 1}:0"]`)?.focus();
-      } else {
-        insertParagraphAt(found.list, found.index + 1);
-      }
-      return;
-    }
-
-    if (target instanceof HTMLTextAreaElement) {
-      // An image caption and a heading are single-line, so Enter adds the new
-      // paragraph after the block rather than inside it.
-      const captionId = target.dataset.pgCaption;
-      const found = findBlock(pagesState().working, captionId || target.dataset.pgText);
-      if (!found) return;
-      if (captionId || found.block.type === "heading") {
-        event.preventDefault();
-        insertParagraphAt(found.list, found.index + 1);
-        return;
-      }
-      // A toggle owns the blocks beneath it, so Enter adds inside it.
-      if (found.block.type === "toggle") {
-        event.preventDefault();
-        const children = (found.block.children ??= []);
-        insertParagraphAt(children, children.length);
-        return;
-      }
-      if (found.block.type !== "paragraph") return;
-      event.preventDefault();
-      insertParagraphAt(found.list, found.index + 1);
-      return;
-    }
-
-    // A subpage block has no text field; Enter on the focused block adds the
-    // paragraph below it, so a page that is only a subpage link can still grow.
-    // Buttons keep their own Enter behaviour (the link opens, ✕ removes).
-    const blockEl = target instanceof HTMLElement && !(target instanceof HTMLButtonElement)
-      ? target.closest(".pg-block-subpage")
-      : null;
-    if (!blockEl) return;
-    const found = findBlock(pagesState().working, blockEl.dataset.pgBlock);
+    // Enter commits the line: a new paragraph goes right after the current block.
+    const blockId = target.dataset.pgText;
+    const found = findBlock(pagesState().working, blockId);
     if (!found) return;
+    if (found.block.type === "heading") return; // headings stay single-line
     event.preventDefault();
-    insertParagraphAt(found.list, found.index + 1);
+    const list = found.block.type === "toggle" ? (found.block.children ??= []) : found.list;
+    const at = found.block.type === "toggle" ? list.length : found.index + 1;
+    list.splice(at, 0, newBlock("paragraph"));
+    pagesState().dirty = true;
+    renderBlocks();
+    scheduleSave();
+    const next = $(`[data-pg-text="${list[at].id}"]`);
+    next?.focus();
   });
 
   editor.addEventListener("click", (event) => {
