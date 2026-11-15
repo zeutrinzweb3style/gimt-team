@@ -233,7 +233,11 @@ cookie, and the pages API additionally limits edits to the page's creator.
 Anything else sensitive should stay in Supabase row-level security or be omitted
 from these endpoints.
 
-The frontend is a plain ES-module SPA with no build step. `public/index.html` loads `public/styles.css` and `public/app/main.js`; the rest of the UI lives in small modules under [`public/app/`](public/app) (state, shared utils, and one module per dashboard section).
+The frontend is a plain ES-module SPA. `public/index.html` loads `public/styles.css`, `public/tailwind.css` and `public/app/main.js`; the rest of the UI lives in small modules under [`public/app/`](public/app) (state, shared utils, and one module per dashboard section).
+
+Tailwind is compiled to [`public/tailwind.css`](public/tailwind.css) at build time and committed, so the site still deploys as static files with no build step on the host. This replaces the `cdn.tailwindcss.com` runtime compiler, which shipped ~400 KB of JavaScript, cost an extra redirect, and blocked first paint. The compiled sheet is ~22 KB (~5 KB gzipped).
+
+Run `npm run build:css` after adding a Tailwind class to `public/index.html` or `public/app/**`. The [stylesheet workflow](.github/workflows/stylesheet.yml) rebuilds it on every push and pull request and fails if the committed file is stale.
 
 ## Hierarchical pages
 

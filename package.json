@@ -7,10 +7,12 @@
     "check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "build:test": "tsc --outDir .test-build --noEmit false --declaration false",
-    "test": "npm run build:test && node --test tests/*.test.mjs"
+    "test": "npm run build:test && node --test tests/*.test.mjs",
+    "build:css": "tailwindcss -c tailwind.config.cjs -i src/tailwind.css -o public/tailwind.css --minify"
   },
   "devDependencies": {
     "@types/node": "^20.14.8",
+    "tailwindcss": "3.4.17",
     "typescript": "^5.5.2"
   }
 }

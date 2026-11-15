@@ -38,8 +38,16 @@ export async function init() {
   $("#tickets-scheduled-member").setAttribute("data-members-select", "1");
   $("#ticket-search-member").setAttribute("data-members-select", "1");
 
-  try { await loadMembers(); } catch (error) { console.warn("Failed to load members", error); }
-  try { await loadIssueCategories(); } catch (error) { console.warn("Failed to load issue categories", error); }
+  // Kick off the two startup fetches without awaiting them: neither is needed to
+  // wire the UI, and the tab buttons were dead until both finished. They run in
+  // parallel now, and the initial route is resolved right after the listeners are
+  // attached so the shell paints and responds immediately.
+  const membersReady = loadMembers().catch((error) => {
+    console.warn("Failed to load members", error);
+  });
+  const categoriesReady = loadIssueCategories().catch((error) => {
+    console.warn("Failed to load issue categories", error);
+  });
 
   // Tabs
   for (const btn of $all(".tab-btn")) {
@@ -307,6 +315,12 @@ export async function init() {
 
   // Initial route. The issue report owns its own URL (?issue=...&from=...&to=...)
   // so a shared report link opens straight to that report.
+  //
+  // The renderers below read member names out of `state.members`, so wait for the
+  // startup fetches first. They were started (not awaited) up top, so this is a
+  // parallel wait rather than two sequential round trips, and the listeners above
+  // are already live, so the shell responds while these are in flight.
+  await Promise.all([membersReady, categoriesReady]);
   const initialIssue = getIssueUrlParams();
   const initialUrl = getMemberUrlParams();
   const initialReports = new URLSearchParams(window.location.search).get("reports") === "1";

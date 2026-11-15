@@ -6,29 +6,17 @@
     <meta name="color-scheme" content="light" />
     <title>Working Management — Dashboard</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%E2%8F%B1%EF%B8%8F%3C/text%3E%3C/svg%3E" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: [
-                "ui-sans-serif",
-                "system-ui",
-                "-apple-system",
-                "Segoe UI",
-                "Roboto",
-                "sans-serif"
-              ]
-            }
-          }
-        }
-      };
-    </script>
+    <!-- Tailwind is prebuilt into /tailwind.css by `npm run build:css` and committed,
+         so the browser no longer downloads the ~400 KB runtime JIT from
+         cdn.tailwindcss.com (which also cost a redirect and blocked first paint).
+         It is linked after styles.css to keep the previous cascade order, where
+         the utilities were injected last. -->
     <link rel="stylesheet" href="/styles.css" />
-    <!-- Must load before any other script so window.Telegram.WebApp is ready. -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/tailwind.css" />
+    <!-- Deferred so it cannot block first paint, while still running before the
+         module script at the end of <body>: deferred scripts keep document order,
+         so window.Telegram.WebApp is ready by the time the app boots. -->
+    <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body class="home-welcome-mode min-h-full bg-gradient-to-br from-slate-50 via-teal-50 to-sky-50 text-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950 dark:text-slate-100">
     <header class="border-b border-teal-100 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur sticky top-0 z-20 shadow-sm">
