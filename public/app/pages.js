@@ -5,6 +5,7 @@
 // (?page=<token>), which the server resolves without a session.
 
 import { state } from "./state.js";
+import { renderInlineMarkdown, renderMarkdown } from "./markdown.js";
 import { $, $all, copyTextToButton, debounce, escapeHtml, fetchJson, postJson, safeImageUrl } from "./utils.js";
 
 const PAGES_API = "/api/web/members?resource=pages";
@@ -413,8 +414,11 @@ function renderBlocks() {
 function blockText(block, editable, placeholder) {
   const cls = block.type === "heading" ? `pg-h pg-h${block.level || 1}` : "pg-text";
   if (!editable) {
-    const text = escapeHtml(block.text || "").replace(/\n/g, "<br />");
-    return `<div class="${cls} pg-readonly-text">${text}</div>`;
+    // Page bodies are authored as Markdown, so the read-only view renders it
+    // instead of printing the source (tables, bold and links were showing raw).
+    // A heading block is one line, so it gets inline formatting with no <p>.
+    const body = block.type === "heading" ? renderInlineMarkdown(block.text || "") : renderMarkdown(block.text || "");
+    return `<div class="${cls} pg-readonly-text pg-markdown">${body}</div>`;
   }
   const hint = placeholder || (block.type === "heading" ? "Heading" : "Write something — type / for commands");
   return `<textarea class="${cls} pg-text-input" rows="1" data-pg-text="${escapeHtml(block.id)}"
