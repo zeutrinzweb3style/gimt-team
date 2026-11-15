@@ -10,7 +10,7 @@ import { defaultIssueRange, getIssueUrlParams, loadIssueReport, openIssueReport,
 import { closeMemberDetail, openMemberDetail } from "./member-detail.js";
 import { defaultMemberRange, getMemberUrlParams, initMemberProfileControls, loadMemberProfile, openMemberProfile, renderMemberProfileHeader, showMemberTabButton, updateMemberUrlParams } from "./member-profile.js";
 import { loadMembers } from "./members.js";
-import { initPages, loadPages, openPageByToken, renderSharedPage } from "./pages.js";
+import { handleSharedPopState, initPages, loadPages, openPageByToken, renderSharedPage } from "./pages.js";
 import { loadProof } from "./proof.js";
 import { initProofReports } from "./proof-reports.js";
 import { state } from "./state.js";
@@ -333,9 +333,12 @@ export async function init() {
       // loading state) instead of an empty dashboard while the page loads.
       document.body.dataset.homeContinued = "true";
       switchTab("pages-shared");
-      openPageByToken(initialShareToken)
+      // The entry page replaces the current history entry: the trail starts here,
+      // so the device back gesture should leave the page, not open a blank state.
+      openPageByToken(initialShareToken, { history: "replace" })
         .then(renderSharedPage)
         .catch(renderSharedPage);
+      window.addEventListener("popstate", handleSharedPopState);
     } else {
       // Issue links use the canonical category list; defer only that deep link,
       // never the ordinary Home screen, until the category request completes.

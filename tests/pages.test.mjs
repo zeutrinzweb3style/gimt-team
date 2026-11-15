@@ -287,6 +287,33 @@ test("a shared subpage link reports the linked subpage titles", async () => {
   assert.deepEqual(shared.json().breadcrumb.map((crumb) => crumb.title), ["Parent"]);
 });
 
+test("a shared breadcrumb carries its ancestors' share tokens", async () => {
+  // The trail is the reader's only route back up, so each crumb above the
+  // current page needs its own share token to be clickable. The current page is
+  // the last crumb and keeps the token the reader already holds.
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const root = (await call(`${API}&action=create`, { method: "POST", cookie, body: { title: "Root", content: [] } })).json().page;
+  const mid = (await call(`${API}&action=create`, { method: "POST", cookie, body: { parentId: root.id, title: "Mid", content: [] } })).json().page;
+  const leaf = (await call(`${API}&action=create`, { method: "POST", cookie, body: { parentId: mid.id, title: "Leaf", content: [] } })).json().page;
+
+  const shared = await call(`${API}&action=shared&token=${leaf.share_token}`);
+  assert.equal(shared.statusCode, 200);
+  assert.deepEqual(shared.json().breadcrumb.map((crumb) => crumb.title), ["Root", "Mid", "Leaf"]);
+  // The ancestors above the current page are the clickable steps, so they carry
+  // their tokens; the current page is the last crumb and needs none — the reader
+  // already holds that link.
+  assert.deepEqual(
+    shared.json().breadcrumb.slice(0, -1).map((crumb) => crumb.share_token),
+    [root.share_token, mid.share_token]
+  );
+  assert.equal(shared.json().breadcrumb.at(-1).share_token, undefined);
+  // Each ancestor token really opens that page, which is what makes the crumb a
+  // working link rather than decoration.
+  const walked = await call(`${API}&action=shared&token=${shared.json().breadcrumb[0].share_token}`);
+  assert.equal(walked.json().page.title, "Root");
+});
+
 test("the shared subpage link is openable without a login", async () => {
   resetStore();
   const cookie = await sessionCookie("betz", "Betz");
@@ -824,6 +851,147 @@ test("reading pages is not blocked for a cross-site Origin", async () => {
 });
 
 // ------------------------------------------------------ shared-page render --
+
+// A stub document for the shared render, with one container that records its
+// innerHTML and lets the test fire the delegated click handler.
+function sharedContainer() {
+  return {
+    dataset: {},
+    innerHTML: "",
+    handler: null,
+    addEventListener(type, fn) { if (type === "click") this.handler = fn; }
+  };
+}
+
+function withSharedDocument(container, run) {
+  const previousDocument = globalThis.document;
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const history = {
+    pushed: [],
+    replaced: [],
+    pushState(_state, _title, url) { this.pushed.push(url); },
+    replaceState(_state, _title, url) { this.replaced.push(url); },
+    back() { this.backCalled = true; }
+  };
+  globalThis.document = {
+    querySelector: (selector) => (selector === "#pages-shared" ? container : null)
+  };
+  globalThis.window = { history };
+  globalThis.location = { search: "" };
+  return Promise.resolve()
+    .then(() => run(history))
+    .finally(() => {
+      globalThis.document = previousDocument;
+      globalThis.fetch = previousFetch;
+      globalThis.window = previousWindow;
+      globalThis.location = previousLocation;
+    });
+}
+
+/** A fetch stub that serves one shared page per token, keyed by the token. */
+function stubSharedFetch(pagesByToken, calls = []) {
+  globalThis.fetch = async (url) => {
+    const token = new URL(String(url), "https://example.test").searchParams.get("token");
+    calls.push(token);
+    const page = pagesByToken[token];
+    if (!page) return { ok: false, status: 404, async json() { return { ok: false, error: "Page not found." }; } };
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return { ok: true, page: page.page, breadcrumb: page.breadcrumb || [], linkedPages: page.linkedPages || [] };
+      }
+    };
+  };
+  return calls;
+}
+
+test("a shared page shows a clickable trail and a Back control once the reader moves", async () => {
+  const container = sharedContainer();
+  const rootToken = "a".repeat(32);
+  const leafToken = "b".repeat(32);
+  const pages = {
+    [rootToken]: {
+      page: { id: "root", title: "Community Moderator", created_by_member_name: "Betz", content: [] },
+      breadcrumb: [{ id: "root", title: "Community Moderator", share_token: rootToken }]
+    },
+    [leafToken]: {
+      page: { id: "leaf", title: "Week 3", created_by_member_name: "Betz", content: [] },
+      breadcrumb: [
+        { id: "root", title: "Community Moderator", share_token: rootToken },
+        { id: "leaf", title: "Week 3" }
+      ]
+    }
+  };
+  const calls = stubSharedFetch(pages);
+
+  await withSharedDocument(container, async (history) => {
+    const { state } = await import("../public/app/state.js");
+    const { openPageByToken, renderSharedPage, canGoBackShared } = await import("../public/app/pages.js");
+    state.pages.shared = null;
+
+    // The entry page of a share link starts the walk and replaces the history
+    // entry, so the device back gesture leaves the page.
+    await openPageByToken(rootToken, { history: "replace" });
+    renderSharedPage();
+    assert.equal(canGoBackShared(), false);
+    assert.doesNotMatch(container.innerHTML, /pg-shared-back/);
+    assert.equal(history.replaced.length, 1);
+
+    // Moving to the subpage remembers the page it came from and pushes a step.
+    await openPageByToken(leafToken, { history: "push" });
+    renderSharedPage();
+    assert.equal(canGoBackShared(), true);
+    assert.match(container.innerHTML, /id="pg-shared-back"/);
+    assert.match(container.innerHTML, new RegExp(`data-pg-shared-token="${rootToken}"`));
+    assert.match(container.innerHTML, new RegExp(`href="\\?page=${rootToken}"`));
+    // The current page is the last crumb and is not a link.
+    assert.doesNotMatch(container.innerHTML, new RegExp(`data-pg-shared-token="${leafToken}"`));
+    assert.equal(history.pushed.length, 1);
+    assert.equal(history.pushed[0], `?page=${leafToken}`);
+  });
+  assert.deepEqual(calls, [rootToken, leafToken]);
+});
+
+test("the browser back gesture reopens the page the reader came from", async () => {
+  const container = sharedContainer();
+  const rootToken = "c".repeat(32);
+  const leafToken = "d".repeat(32);
+  const pages = {
+    [rootToken]: {
+      page: { id: "root", title: "Root", created_by_member_name: "Betz", content: [] },
+      breadcrumb: [{ id: "root", title: "Root", share_token: rootToken }]
+    },
+    [leafToken]: {
+      page: { id: "leaf", title: "Leaf", created_by_member_name: "Betz", content: [] },
+      breadcrumb: [
+        { id: "root", title: "Root", share_token: rootToken },
+        { id: "leaf", title: "Leaf" }
+      ]
+    }
+  };
+  stubSharedFetch(pages);
+
+  await withSharedDocument(container, async () => {
+    const { state } = await import("../public/app/state.js");
+    const { openPageByToken, handleSharedPopState, canGoBackShared } = await import("../public/app/pages.js");
+    state.pages.shared = null;
+    state.currentTab = "pages-shared";
+
+    await openPageByToken(rootToken, { history: "replace" });
+    await openPageByToken(leafToken, { history: "push" });
+    assert.equal(state.pages.shared.page.title, "Leaf");
+
+    // The browser walks back to the entry page and fires popstate with the state
+    // that page recorded; the view reopens it and the trail shrinks.
+    handleSharedPopState({ state: { pgShared: { token: rootToken, trail: [rootToken] } } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(state.pages.shared.page.title, "Root");
+    assert.equal(canGoBackShared(), false, "back at the entry page there is nothing further back");
+  });
+});
 
 test("a logged-in reader still gets the subpage link on a shared page", async () => {
   // Regression: findPage() preferred the sidebar `pages` list, which omits
