@@ -1547,3 +1547,69 @@ textarea.pg-image-caption:focus { background: rgb(248 250 252); border-radius: 6
 .pg-shared-title { font-size: 30px; font-weight: 800; line-height: 1.2; }
 .pg-shared-meta { margin-top: 6px; font-size: 12px; color: rgb(100 116 139); }
 .pg-shared-card .pg-blocks { margin-top: 18px; }
+
+/* ---- table block ---- */
+.pg-block-table { flex-direction: column; align-items: stretch; padding: 6px 0; }
+.pg-table-wrap { overflow-x: auto; max-width: 100%; }
+table.pg-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: 13.5px;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.dark table.pg-table { border-color: rgb(51 65 85); }
+table.pg-table th,
+table.pg-table td {
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid rgb(241 245 249);
+  border-right: 1px solid rgb(241 245 249);
+}
+.dark table.pg-table th,
+.dark table.pg-table td { border-color: rgb(30 41 59); }
+table.pg-table th {
+  background: rgb(240 253 250);
+  color: rgb(15 118 110);
+  font-weight: 600;
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.dark table.pg-table th { background: rgb(19 78 74); color: rgb(153 246 228); }
+table.pg-table tr:last-child th,
+table.pg-table tr:last-child td { border-bottom: none; }
+table.pg-table th:last-child,
+table.pg-table td:last-child { border-right: none; }
+table.pg-table-editing td { padding: 0; }
+.pg-table-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: 13.5px;
+  padding: 6px 10px;
+}
+.pg-table-input:focus { background: rgb(248 250 252); }
+.dark .pg-table-input:focus { background: rgb(30 41 59); }
+.pg-table-toolbar {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+  opacity: 0; transition: opacity 120ms ease;
+}
+.pg-block-table:hover .pg-table-toolbar,
+.pg-block-table:focus-within .pg-table-toolbar { opacity: 1; }
+.pg-table-btn {
+  border: 1px solid rgb(226 232 240); background: white; cursor: pointer;
+  color: rgb(71 85 105); font-size: 12px; padding: 4px 8px; border-radius: 6px; line-height: 1;
+}
+.dark .pg-table-btn { border-color: rgb(51 65 85); background: rgb(15 23 42); color: rgb(203 213 225); }
+.pg-table-btn:hover { background: rgb(241 245 249); }
+.dark .pg-table-btn:hover { background: rgb(30 41 59); }
+.pg-table-btn.is-active { background: rgb(13 148 136); border-color: rgb(13 148 136); color: white; }
+.pg-table-btn-danger { color: rgb(185 28 28); border-color: rgb(252 165 165); }
+.dark .pg-table-btn-danger { color: rgb(252 165 165); }

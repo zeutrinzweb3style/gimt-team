@@ -257,12 +257,18 @@ dashboard archive. Both only appear once the member is authenticated.
   it is never listed anywhere else. A page is therefore unlisted: it is only
   reachable by whoever holds the link.
 - **Blocks and toggle headings.** The page body is a JSON array of blocks
-  (`paragraph`, `heading`, `toggle`, `subpage`, `image`). A `toggle` owns the
-  blocks nested beneath it and collapses on click. Plain text is the default:
-  just type a caption or description into any line. The slash menu is optional —
-  it only opens when a line starts with `/`. `/heading` turns a line into a
-  toggle heading, `/h1`–`/h3` make plain headings, `/page` creates a nested
-  subpage and links it into the body, and `/image` uploads a picture.
+  (`paragraph`, `heading`, `toggle`, `subpage`, `image`, `table`). A `toggle`
+  owns the blocks nested beneath it and collapses on click. Plain text is the
+  default: just type a caption or description into any line. The slash menu is
+  optional — it only opens when a line starts with `/`. `/heading` turns a line
+  into a toggle heading, `/h1`–`/h3` make plain headings, `/page` creates a
+  nested subpage and links it into the body, `/image` uploads a picture, and
+  `/table` drops in a grid.
+- **Tables.** `/table` on an empty line replaces it with a two-by-two grid for
+  metrics and figures. Every cell is a plain text field; the toolbar adds a row
+  or a column, toggles the first row as a header, or deletes the table. The grid
+  is stored rectangular (ragged rows are padded) and bounded to 100 rows by 20
+  columns of 500-character cells, so a crafted payload cannot blow up a page.
 - **Images.** `/image` on an empty line opens the device file picker and drops
   the picture into the body, so a tutorial page can read "step 1: open the
   website and click signup" above the screenshot. Each image block carries an
@@ -291,8 +297,8 @@ within Vercel Hobby's 12-function limit.
 
 The handler sanitises every incoming block tree (known types only, bounded depth
 and length, and an image `url` must be plain `http(s)` — a `javascript:` or
-`data:` payload is dropped) and refuses to move a page inside its own
-descendant.
+`data:` payload is dropped; a table is clamped to 100×20 cells of 500 characters
+and padded rectangular) and refuses to move a page inside its own descendant.
 
 ### Image uploads
 
