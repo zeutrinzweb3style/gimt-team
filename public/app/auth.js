@@ -8,6 +8,7 @@
 import { $ } from "./utils.js";
 
 const AUTH_ENDPOINT = "/api/web/members?auth=";
+const TELEGRAM_SDK_URL = "https://telegram.org/js/telegram-web-app.js";
 
 function tg() {
   return window.Telegram?.WebApp;
@@ -15,6 +16,42 @@ function tg() {
 
 function hasInitData() {
   return Boolean(tg()?.initData);
+}
+
+let sdkPromise = null;
+
+/**
+ * Load the Telegram WebApp SDK on demand. It used to be a deferred script in the
+ * document head, which placed it ahead of the module bundle in document order,
+ * so a slow or unreachable telegram.org delayed the entire dashboard. Nothing on
+ * the boot path needs it: only Mini App detection and login do.
+ */
+function loadTelegramSdk() {
+  if (sdkPromise) return sdkPromise;
+  sdkPromise = new Promise((resolve) => {
+    if (tg()) { resolve(tg()); return; }
+    const script = document.createElement("script");
+    script.src = TELEGRAM_SDK_URL;
+    script.async = true;
+    script.addEventListener("load", () => resolve(tg() ?? null));
+    script.addEventListener("error", () => resolve(null));
+    document.head.appendChild(script);
+  });
+  return sdkPromise;
+}
+
+/**
+ * Telegram Web and Desktop hand init data to the iframe from the parent, so it
+ * can arrive a moment after the SDK itself loads. Wait briefly for it instead of
+ * concluding too early that this is an ordinary browser.
+ */
+async function waitForInitData(timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!hasInitData()) {
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return true;
 }
 
 async function postAuth(mode, body) {
@@ -88,11 +125,21 @@ async function loadSession() {
 
 async function login() {
   const loginBtn = $("#telegram-login-btn");
-  const initData = tg()?.initData;
-  if (!initData) return;
-
   const original = loginBtn?.textContent;
   if (loginBtn) loginBtn.textContent = "Connecting…";
+
+  await loadTelegramSdk();
+  if (!(await waitForInitData())) {
+    if (loginBtn) loginBtn.textContent = original;
+    alert("Open this dashboard from the Telegram bot to sign in.");
+    return;
+  }
+
+  const initData = tg()?.initData;
+  if (!initData) {
+    if (loginBtn) loginBtn.textContent = original;
+    return;
+  }
 
   const { ok, payload } = await postAuth("login", { initData });
   if (ok && payload?.connected) {
@@ -114,15 +161,19 @@ export async function initTelegramAuth() {
   if (!container) return;
 
   const connected = await loadSession();
-  if (!connected) {
-    // No valid session yet: only offer login inside the Mini App.
-    if (!hasInitData()) return;
+  if (connected) {
     container.classList.remove("hidden");
     container.classList.add("flex");
     $("#telegram-login-btn")?.addEventListener("click", login);
     $("#telegram-logout-btn")?.addEventListener("click", logout);
     return;
   }
+
+  // No session yet. Only offer login inside the Mini App, but the SDK is loaded
+  // on demand now, so wait for it and for the init data the Telegram client
+  // hands the iframe before deciding this is an ordinary browser.
+  await loadTelegramSdk();
+  if (!(await waitForInitData())) return;
 
   container.classList.remove("hidden");
   container.classList.add("flex");
