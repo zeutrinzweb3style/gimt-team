@@ -169,6 +169,19 @@ export async function listPages(db: SupabaseRestClient): Promise<Page[]> {
   return db.select<Page>("pages", params(order("created_at", true)));
 }
 
+/** Sidebar and hierarchy operations need metadata only, never the page body. */
+export type PageSummary = Pick<
+  Page,
+  "id" | "parent_id" | "title" | "created_by_member_id" | "created_by_member_name" | "created_at" | "updated_at" | "updated_by_member_id"
+>;
+
+export async function listPageSummaries(db: SupabaseRestClient): Promise<PageSummary[]> {
+  return db.select<PageSummary>("pages", params(
+    ["select", "id,parent_id,title,created_by_member_id,created_by_member_name,created_at,updated_at,updated_by_member_id"],
+    order("created_at", true)
+  ));
+}
+
 export async function getPageById(db: SupabaseRestClient, id: string): Promise<Page | null> {
   const rows = await db.select<Page>("pages", params(eq("id", id)));
   return rows[0] ?? null;
@@ -236,7 +249,7 @@ export async function wouldCreateCycle(
 ): Promise<boolean> {
   if (pageId === parentId) return true;
 
-  const pages = await listPages(db);
+  const pages = await listPageSummaries(db);
   const parentOf = new Map(pages.map((page) => [page.id, page.parent_id]));
 
   let cursor: string | null = parentId;
@@ -250,10 +263,10 @@ export async function wouldCreateCycle(
   return false;
 }
 
-export type PageTreeNode = Page & { children: PageTreeNode[] };
+export type PageTreeNode = PageSummary & { children: PageTreeNode[] };
 
 /** Build the parent/child tree from a flat list, preserving input order. */
-export function buildPageTree(pages: Page[]): PageTreeNode[] {
+export function buildPageTree(pages: PageSummary[]): PageTreeNode[] {
   const nodes = new Map<string, PageTreeNode>();
   for (const page of pages) nodes.set(page.id, { ...page, children: [] });
 
@@ -271,7 +284,7 @@ export function buildPageTree(pages: Page[]): PageTreeNode[] {
  * The page plus every descendant, used when deleting so a client knows how many
  * subpages go with it. The DB cascades on delete, so this is informational.
  */
-export function collectDescendantIds(pages: Page[], rootId: string): string[] {
+export function collectDescendantIds(pages: PageSummary[], rootId: string): string[] {
   const childrenOf = new Map<string, string[]>();
   for (const page of pages) {
     if (!page.parent_id) continue;

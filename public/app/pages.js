@@ -100,15 +100,31 @@ function autosizeAll(root = document) {
 
 // ---------------------------------------------------------------- data ----
 
-export async function loadPages() {
+let pagesLoadInFlight = null;
+
+export function loadPages() {
   const container = $("#pages-sidebar-tree");
-  if (!container) return;
-  const session = await fetchJson("/api/web/members?auth=me").catch(() => null);
-  pagesState().memberId = session?.connected?.member_id || "";
-  const data = await fetchJson(`${PAGES_API}&action=list`);
-  pagesState().pages = data.pages || [];
-  pagesState().tree = data.tree || [];
-  renderSidebar();
+  if (!container) return Promise.resolve();
+  if (pagesLoadInFlight) return pagesLoadInFlight;
+
+  container.innerHTML = '<p class="pg-sidebar-empty">Loading pages…</p>';
+  pagesLoadInFlight = fetchJson(`${PAGES_API}&action=list`)
+    .then((data) => {
+      pagesState().memberId = data.member?.member_id || "";
+      pagesState().pages = data.pages || [];
+      pagesState().tree = data.tree || [];
+      pagesState().loaded = true;
+      renderSidebar();
+    })
+    .catch((error) => {
+      pagesState().loaded = false;
+      const message = error instanceof Error ? error.message : String(error);
+      container.innerHTML = `<p class="pg-sidebar-empty">Could not load pages: ${escapeHtml(message)}</p>`;
+    })
+    .finally(() => {
+      pagesLoadInFlight = null;
+    });
+  return pagesLoadInFlight;
 }
 
 export async function openPage(id) {

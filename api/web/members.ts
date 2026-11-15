@@ -8,7 +8,7 @@ import {
   getPageById,
   getPageByShareToken,
   isValidShareToken,
-  listPages,
+  listPageSummaries,
   sanitizeBlocks,
   updatePage,
   wouldCreateCycle
@@ -157,7 +157,7 @@ async function handlePages(request: any, response: any, url: URL): Promise<void>
       sendJson(response, 404, { ok: false, error: "Page not found." });
       return;
     }
-    const all = await listPages(db);
+    const all = await listPageSummaries(db);
     const breadcrumb = buildBreadcrumb(all, page.id);
     const linkedIds = collectSubpageIds(page.content);
     const linkedPages = all
@@ -174,8 +174,13 @@ async function handlePages(request: any, response: any, url: URL): Promise<void>
   }
 
   if (action === "list") {
-    const pages = await listPages(db);
-    sendJson(response, 200, { ok: true, tree: buildPageTree(pages), pages });
+    const pages = await listPageSummaries(db);
+    sendJson(response, 200, {
+      ok: true,
+      member: { member_id: session.memberId, member_name: session.memberName },
+      tree: buildPageTree(pages),
+      pages
+    });
     return;
   }
 
@@ -266,7 +271,7 @@ async function handlePages(request: any, response: any, url: URL): Promise<void>
       sendJson(response, 403, { ok: false, error: "Only the member who created this page can delete it." });
       return;
     }
-    const all = await listPages(db);
+    const all = await listPageSummaries(db);
     const removed = collectDescendantIds(all, id);
     await deletePage(db, id);
     sendJson(response, 200, { ok: true, deleted: removed.length });
