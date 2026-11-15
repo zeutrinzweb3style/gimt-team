@@ -272,7 +272,7 @@ function renderEditor() {
     </div>
     ${editable ? "" : '<p class="pg-readonly-note">Only the member who created this page can edit it.</p>'}
     <div class="pg-blocks" id="pages-blocks" contenteditable="false"></div>
-    ${editable ? '<button type="button" id="pages-add-block" class="pg-add-block">＋ Add a block — or type / for commands</button>' : ""}
+    ${editable ? '<button type="button" id="pages-add-block" class="pg-add-block">＋ Add a block</button>' : ""}
   `;
 
   renderBlocks();
@@ -312,7 +312,7 @@ function blockText(block, editable, placeholder) {
     const text = escapeHtml(block.text || "").replace(/\n/g, "<br />");
     return `<div class="${cls} pg-readonly-text">${text}</div>`;
   }
-  const hint = placeholder || (block.type === "heading" ? "Heading" : "Type / for commands");
+  const hint = placeholder || (block.type === "heading" ? "Heading" : "Write something — type / for commands");
   return `<textarea class="${cls} pg-text-input" rows="1" data-pg-text="${escapeHtml(block.id)}"
     placeholder="${hint}">${escapeHtml(block.text || "")}</textarea>`;
 }

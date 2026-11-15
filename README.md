@@ -254,9 +254,11 @@ dashboard archive. Both only appear once the member is authenticated.
   reachable by whoever holds the link.
 - **Blocks and toggle headings.** The page body is a JSON array of blocks
   (`paragraph`, `heading`, `toggle`, `subpage`). A `toggle` owns the blocks
-  nested beneath it and collapses on click. `/heading` turns a line into a
+  nested beneath it and collapses on click. Plain text is the default: just
+  type a caption or description into any line. The slash menu is optional — it
+  only opens when a line starts with `/`. `/heading` turns a line into a
   toggle heading, `/h1`–`/h3` make plain headings, and `/page` creates a nested
-  subpage and links it into the body. Every line has a slash menu.
+  subpage and links it into the body.
 
 ### Pages API
 
