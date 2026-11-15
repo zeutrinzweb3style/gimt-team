@@ -152,11 +152,11 @@ function makeResponse() {
   };
 }
 
-function makeRequest(url, { method = "GET", body, cookie } = {}) {
+function makeRequest(url, { method = "GET", body, cookie, headers = {} } = {}) {
   return {
     method,
     url,
-    headers: cookie ? { cookie } : {},
+    headers: cookie ? { cookie, ...headers } : { ...headers },
     async *[Symbol.asyncIterator]() {
       if (body !== undefined) yield Buffer.from(JSON.stringify(body));
     }
@@ -653,4 +653,67 @@ test("a table block nested inside a toggle keeps its grid", async () => {
   const [toggle] = created.json().page.content;
   assert.equal(toggle.children[0].type, "table");
   assert.deepEqual(toggle.children[0].table.rows, [["x", "y"]]);
+});
+
+// The session cookie is SameSite=None so it survives the Telegram Web/Desktop
+// iframe. A None cookie rides along on cross-site requests, so a mutating call
+// from another site must be refused on Origin, not merely blocked by CORS.
+
+test("a cross-site mutating request is refused even with a valid cookie", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+
+  const forged = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    headers: { origin: "https://evil.example", host: "dashboard.example" },
+    body: { title: "Forged", content: [] }
+  });
+  assert.equal(forged.statusCode, 403);
+  assert.equal(forged.json().ok, false);
+
+  // Nothing was written.
+  const list = await call(`${API}&action=list`, { cookie });
+  assert.equal(list.json().pages.length, 0);
+});
+
+test("a same-origin mutating request is accepted", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    headers: { origin: "https://dashboard.example", host: "dashboard.example" },
+    body: { title: "Legit", content: [] }
+  });
+  assert.equal(created.statusCode, 201);
+});
+
+test("a mutating request with no Origin is accepted", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie, body: { title: "No origin", content: [] }
+  });
+  assert.equal(created.statusCode, 201);
+});
+
+test("the proxy's x-forwarded-host is what Origin is compared against", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  // On Vercel the internal host differs from the public one; the forwarded host
+  // must win, or every real request would look cross-site.
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    headers: { origin: "https://dashboard.example", host: "internal.local", "x-forwarded-host": "dashboard.example" },
+    body: { title: "Proxied", content: [] }
+  });
+  assert.equal(created.statusCode, 201);
+});
+
+test("reading pages is not blocked for a cross-site Origin", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const list = await call(`${API}&action=list`, {
+    cookie, headers: { origin: "https://evil.example", host: "dashboard.example" }
+  });
+  assert.equal(list.statusCode, 200);
 });

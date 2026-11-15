@@ -13,10 +13,9 @@
          the utilities were injected last. -->
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/tailwind.css" />
-    <!-- Deferred so it cannot block first paint, while still running before the
-         module script at the end of <body>: deferred scripts keep document order,
-         so window.Telegram.WebApp is ready by the time the app boots. -->
-    <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- The Telegram WebApp SDK is loaded on demand from auth.js instead of here.
+         As a deferred script it ran before the module bundle in document order,
+         so a slow or unreachable telegram.org held up the entire dashboard. -->
   </head>
   <body class="home-welcome-mode min-h-full bg-gradient-to-br from-slate-50 via-teal-50 to-sky-50 text-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950 dark:text-slate-100">
     <header class="border-b border-teal-100 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur sticky top-0 z-20 shadow-sm">

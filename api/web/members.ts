@@ -34,6 +34,28 @@ function sendJson(response: any, statusCode: number, payload: unknown) {
   response.end(JSON.stringify(payload));
 }
 
+/**
+ * Rejects a state-changing request whose Origin is another site.
+ *
+ * The session cookie is SameSite=None so it survives the Telegram Web/Desktop
+ * iframe, and a None cookie is attached to cross-site requests too. That would
+ * let a hostile page POST to these endpoints with the member's cookie. Browsers
+ * send Origin on cross-site POSTs (and same-origin ones), so a mismatch is a
+ * forgery. A missing Origin is allowed: non-browser callers and the test suite
+ * send none, and they are not the CSRF threat.
+ */
+function isCrossSite(request: any): boolean {
+  const origin = request.headers?.origin ?? request.headers?.Origin;
+  if (!origin) return false;
+  const host = request.headers?.["x-forwarded-host"] ?? request.headers?.host ?? request.headers?.Host;
+  if (!host) return false;
+  try {
+    return new URL(origin).host !== String(host).split(",")[0].trim();
+  } catch {
+    return true;
+  }
+}
+
 function readCookie(request: any, name: string): string | undefined {
   const header = request.headers?.cookie ?? request.headers?.Cookie ?? "";
   for (const part of String(header).split(";")) {
@@ -44,8 +66,14 @@ function readCookie(request: any, name: string): string | undefined {
 }
 
 function setSessionCookie(response: any, value: string, maxAge: number) {
-  const parts = [`${SESSION_COOKIE}=${encodeURIComponent(value)}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`];
   const isHttpsHost = Boolean(process.env.VERCEL || process.env.NETLIFY) || process.env.NODE_ENV === "production";
+  // Telegram Web and Desktop render the Mini App inside a cross-site iframe, and
+  // a Lax cookie is not sent there, so the login would appear to succeed and then
+  // every authenticated call would 401. None is what an iframe needs, and None
+  // demands Secure, which only holds over HTTPS. On a plain-HTTP dev host fall
+  // back to Lax, because a browser rejects None without Secure outright.
+  const sameSite = isHttpsHost ? "None" : "Lax";
+  const parts = [`${SESSION_COOKIE}=${encodeURIComponent(value)}`, "Path=/", "HttpOnly", `SameSite=${sameSite}`, `Max-Age=${maxAge}`];
   if (isHttpsHost) parts.push("Secure");
   response.setHeader("set-cookie", parts.join("; "));
 }
@@ -361,6 +389,12 @@ function collectSubpageIds(blocks: PageBlock[]): Set<string> {
 export default async function handler(request: any, response: any) {
   try {
     const url = new URL(request.url ?? "/", "https://example.com");
+
+    const method = String(request.method ?? "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && isCrossSite(request)) {
+      sendJson(response, 403, { ok: false, error: "Cross-site request blocked." });
+      return;
+    }
 
     if (url.searchParams.get("resource") === "pages") {
       await handlePages(request, response, url);

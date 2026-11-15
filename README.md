@@ -20,7 +20,7 @@ For the Mini App to open on Telegram Web and Desktop, the domain must be registe
 
 ### Telegram login (identity only)
 
-The dashboard header shows a **Log in with Telegram** button, but only when the page is opened as a Telegram Mini App — that is, from a bot button that uses `web_app`. In a normal browser `window.Telegram.WebApp.initData` is empty, so the button never appears.
+The dashboard header shows a **Log in with Telegram** button, but only when the page is opened as a Telegram Mini App — that is, from a bot button that uses `web_app`. In a normal browser `window.Telegram.WebApp.initData` is empty, so the button never appears. The WebApp SDK is loaded on demand (from `auth.js`) rather than from a script tag, so a slow or unreachable `telegram.org` cannot delay the dashboard.
 
 Clicking it sends `initData` to `/api/web/members?auth=login`, which:
 
@@ -28,6 +28,8 @@ Clicking it sends `initData` to `/api/web/members?auth=login`, which:
 2. rejects payloads older than one hour (replay protection),
 3. requires the Telegram user to be a registered team member (`team_registrations`), and
 4. sets an `HttpOnly` signed session cookie (`gimt_session`, 12 hours).
+
+The cookie is `SameSite=None; Secure` on HTTPS hosts. Telegram Web and Desktop render the Mini App inside a cross-site iframe, and a `Lax` cookie is not sent there, so login would appear to succeed and every later call would return 401. Because a `None` cookie also travels on cross-site requests, mutating calls (anything but GET/HEAD/OPTIONS) are refused with 403 when their `Origin` does not match the request host.
 
 `GET /api/web/members?auth=me` returns the connected member, and `POST /api/web/members?auth=logout` clears the cookie. Everything is served from the existing members function, so Vercel stays at 12 functions.
 
