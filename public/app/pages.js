@@ -5,17 +5,29 @@
 // (?page=<token>), which the server resolves without a session.
 
 import { state } from "./state.js";
-import { $, $all, copyTextToButton, debounce, escapeHtml, fetchJson, postJson } from "./utils.js";
+import { $, $all, copyTextToButton, debounce, escapeHtml, fetchJson, postJson, safeImageUrl } from "./utils.js";
 
 const PAGES_API = "/api/web/members?resource=pages";
 
 const SLASH_COMMANDS = [
   { command: "page", label: "Subpage", hint: "Create a nested subpage", icon: "📄" },
+  { command: "image", label: "Image", hint: "Upload an image from your device", icon: "🖼" },
   { command: "heading", label: "Toggle heading", hint: "Collapsible section", icon: "▸" },
   { command: "h1", label: "Heading 1", hint: "Large heading", icon: "H1" },
   { command: "h2", label: "Heading 2", hint: "Medium heading", icon: "H2" },
   { command: "h3", label: "Heading 3", hint: "Small heading", icon: "H3" }
 ];
+
+const IMAGE_WIDTHS = ["small", "medium", "large", "full"];
+const IMAGE_ALIGNS = ["left", "center", "right"];
+
+const IMAGE_WIDTH_LABEL = { small: "S", medium: "M", large: "L", full: "Full" };
+const IMAGE_ALIGN_ICON = { left: "⇤", center: "↔", right: "⇥" };
+
+/** Longest edge (px) an upload is downscaled to before it leaves the browser. */
+const IMAGE_MAX_EDGE = 1600;
+/** Client-side ceiling, kept under the server's decoded-byte limit. */
+const IMAGE_MAX_BYTES = 2.5 * 1024 * 1024;
 
 function pagesState() {
   return state.pages;
@@ -346,11 +358,148 @@ function renderBlock(block, editable) {
       </div>`;
   }
 
+  if (block.type === "image") {
+    return renderImageBlock(block, editable);
+  }
+
   return `
     <div class="pg-block" data-pg-block="${escapeHtml(block.id)}">
       ${blockText(block, editable)}
       ${editable ? `<button type="button" class="pg-block-remove" data-pg-remove="${escapeHtml(block.id)}" title="Remove">✕</button>` : ""}
     </div>`;
+}
+
+function renderImageBlock(block, editable) {
+  const image = block.image || {};
+  const url = safeImageUrl(image.url);
+  const width = IMAGE_WIDTHS.includes(image.width) ? image.width : "medium";
+  const align = IMAGE_ALIGNS.includes(image.align) ? image.align : "center";
+  const alt = escapeHtml(image.alt || block.text || "Page image");
+  const id = escapeHtml(block.id);
+
+  const figure = url
+    ? `<img class="pg-image" src="${escapeHtml(url)}" alt="${alt}" loading="lazy" />`
+    : '<div class="pg-image pg-image-missing">Image unavailable</div>';
+
+  const caption = editable
+    ? `<textarea class="pg-image-caption pg-text-input" rows="1" data-pg-caption="${id}"
+         placeholder="Add a caption (optional)">${escapeHtml(block.text || "")}</textarea>`
+    : (block.text ? `<figcaption class="pg-image-caption pg-readonly-text">${escapeHtml(block.text)}</figcaption>` : "");
+
+  const toolbar = editable
+    ? `<div class="pg-image-toolbar">
+        <div class="pg-image-group" role="group" aria-label="Image size">
+          ${IMAGE_WIDTHS.map((value) => `<button type="button" class="pg-image-btn${value === width ? " is-active" : ""}"
+            data-pg-img-width="${value}" data-pg-block-id="${id}" title="Size: ${value}">${IMAGE_WIDTH_LABEL[value]}</button>`).join("")}
+        </div>
+        <div class="pg-image-group" role="group" aria-label="Image alignment">
+          ${IMAGE_ALIGNS.map((value) => `<button type="button" class="pg-image-btn${value === align ? " is-active" : ""}"
+            data-pg-img-align="${value}" data-pg-block-id="${id}" title="Align: ${value}">${IMAGE_ALIGN_ICON[value]}</button>`).join("")}
+        </div>
+        <div class="pg-image-group">
+          <button type="button" class="pg-image-btn" data-pg-img-replace="${id}" title="Replace image">Replace</button>
+          <button type="button" class="pg-image-btn pg-image-btn-danger" data-pg-remove="${id}" title="Delete image">✕</button>
+        </div>
+      </div>`
+    : "";
+
+  return `
+    <div class="pg-block pg-block-image" data-pg-block="${id}">
+      <figure class="pg-figure pg-img-w-${width} pg-img-a-${align}">
+        ${figure}
+        ${caption}
+      </figure>
+      ${toolbar}
+    </div>`;
+}
+
+// ------------------------------------------------------------ image upload ----
+
+/** Hidden file input reused for both "add image" and "replace image". */
+let imagePicker = null;
+let imagePickerTarget = null;
+
+function pickImage(blockId) {
+  if (!imagePicker) {
+    imagePicker = document.createElement("input");
+    imagePicker.type = "file";
+    imagePicker.accept = "image/png,image/jpeg,image/gif,image/webp";
+    imagePicker.style.display = "none";
+    imagePicker.addEventListener("change", () => {
+      const file = imagePicker.files?.[0];
+      const target = imagePickerTarget;
+      imagePicker.value = "";
+      imagePickerTarget = null;
+      if (file && target) uploadImageIntoBlock(target, file).catch(showError);
+    });
+    document.body.appendChild(imagePicker);
+  }
+  imagePickerTarget = blockId;
+  imagePicker.click();
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read that file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("That file is not a readable image."));
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Downscale in the browser so a photo straight off a phone fits under the
+ * upload limit. Keeps the original when it is already small or when the canvas
+ * round-trip would only make it bigger (e.g. an optimised PNG).
+ */
+async function toUploadDataUrl(file) {
+  const original = await readFileAsDataUrl(file);
+  if (original.length <= IMAGE_MAX_BYTES) return original;
+
+  const img = await loadImage(original);
+  const scale = Math.min(1, IMAGE_MAX_EDGE / Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
+  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const resized = canvas.toDataURL("image/jpeg", 0.85);
+  return resized.length < original.length ? resized : original;
+}
+
+async function uploadImageIntoBlock(blockId, file) {
+  const found = findBlock(pagesState().working, blockId);
+  if (!found) return;
+  setSaveStatus("Uploading image…");
+
+  const data = await toUploadDataUrl(file);
+  const pageId = pagesState().current?.id || "";
+  const result = await postJson(`${PAGES_API}&action=upload-image&id=${encodeURIComponent(pageId)}`, { data });
+  const image = result?.image;
+  if (!image?.url) throw new Error("The upload did not return an image URL.");
+
+  const existing = found.block.image || {};
+  found.block.type = "image";
+  found.block.image = {
+    url: image.url,
+    bucket: image.bucket || "",
+    path: image.path || "",
+    width: IMAGE_WIDTHS.includes(existing.width) ? existing.width : "medium",
+    align: IMAGE_ALIGNS.includes(existing.align) ? existing.align : "center"
+  };
+  pagesState().dirty = true;
+  renderBlocks();
+  renderSidebar();
+  await saveCurrentPage();
 }
 
 // -------------------------------------------------------- slash commands ----
@@ -404,6 +553,14 @@ async function applySlashCommand(blockId, command) {
     delete block.children;
     pagesState().expanded.add(current.id);
     await loadPages();
+  } else if (command === "image") {
+    // The file dialog is async; the picker resolves the block once a file is
+    // chosen, so nothing else to do here.
+    block.text = "";
+    pagesState().dirty = true;
+    renderBlocks();
+    pickImage(blockId);
+    return;
   } else if (command === "heading") {
     block.type = "toggle";
     block.level = 2;
@@ -462,6 +619,18 @@ function initEditorEvents() {
   editor.addEventListener("input", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
+
+    const captionId = target.dataset.pgCaption;
+    if (captionId) {
+      const found = findBlock(pagesState().working, captionId);
+      if (!found) return;
+      found.block.text = target.value;
+      pagesState().dirty = true;
+      autosize(target);
+      scheduleSave();
+      return;
+    }
+
     const blockId = target.dataset.pgText;
     const found = findBlock(pagesState().working, blockId);
     if (!found) return;
@@ -500,6 +669,33 @@ function initEditorEvents() {
   });
 
   editor.addEventListener("click", (event) => {
+    const widthBtn = event.target.closest("[data-pg-img-width]");
+    if (widthBtn) {
+      const found = findBlock(pagesState().working, widthBtn.dataset.pgBlockId);
+      if (found?.block.image) {
+        found.block.image.width = widthBtn.dataset.pgImgWidth;
+        pagesState().dirty = true;
+        renderBlocks();
+        scheduleSave();
+      }
+      return;
+    }
+    const alignBtn = event.target.closest("[data-pg-img-align]");
+    if (alignBtn) {
+      const found = findBlock(pagesState().working, alignBtn.dataset.pgBlockId);
+      if (found?.block.image) {
+        found.block.image.align = alignBtn.dataset.pgImgAlign;
+        pagesState().dirty = true;
+        renderBlocks();
+        scheduleSave();
+      }
+      return;
+    }
+    const replaceBtn = event.target.closest("[data-pg-img-replace]");
+    if (replaceBtn) {
+      pickImage(replaceBtn.dataset.pgImgReplace);
+      return;
+    }
     const collapse = event.target.closest("[data-pg-collapse]");
     if (collapse) {
       const found = findBlock(pagesState().working, collapse.dataset.pgCollapse);

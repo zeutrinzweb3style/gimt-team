@@ -157,14 +157,37 @@ export type SpamReport = {
  */
 export type PageBlock = {
   id: string;
-  type: "paragraph" | "heading" | "toggle" | "subpage";
+  type: "paragraph" | "heading" | "toggle" | "subpage" | "image";
   /** Heading level for `heading`/`toggle` blocks (1–3). */
   level?: 1 | 2 | 3;
+  /** Paragraph/heading text. For an `image` block this is the caption. */
   text: string;
   collapsed?: boolean;
   /** For `subpage` blocks: the id of the child page this block links to. */
   pageId?: string;
+  /** For `image` blocks: the stored object and how to present it. */
+  image?: PageImage;
   children?: PageBlock[];
+};
+
+/** How wide an image renders relative to the page column. */
+export type ImageWidth = "small" | "medium" | "large" | "full";
+
+/** Where an image sits across the page column. */
+export type ImageAlign = "left" | "center" | "right";
+
+/**
+ * An uploaded image. `url` is what the browser loads; `bucket`/`path` keep the
+ * object addressable so it can be replaced or removed later.
+ */
+export type PageImage = {
+  url: string;
+  bucket: string;
+  path: string;
+  width: ImageWidth;
+  align: ImageAlign;
+  /** Optional alt text for accessibility. */
+  alt?: string;
 };
 
 /** A page or nested subpage. `parent_id === null` means a top-level main page. */

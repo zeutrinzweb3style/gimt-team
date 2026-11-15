@@ -1,4 +1,4 @@
-import { eq, order, params, type Page, type PageBlock, type SupabaseRestClient } from "./supabase.js";
+import { eq, order, params, type ImageAlign, type ImageWidth, type Page, type PageBlock, type PageImage, type SupabaseRestClient } from "./supabase.js";
 
 // Hierarchical pages (Notion-style). A page is a row in `public.pages`; nesting
 // is a self-reference through `parent_id`. Every page carries an unguessable
@@ -24,6 +24,47 @@ export function isValidShareToken(token: string | undefined | null): boolean {
 const MAX_BLOCK_DEPTH = 6;
 const MAX_BLOCKS_PER_LEVEL = 500;
 const MAX_TEXT_LENGTH = 20000;
+const MAX_CAPTION_LENGTH = 500;
+
+const IMAGE_WIDTHS: readonly string[] = ["small", "medium", "large", "full"];
+const IMAGE_ALIGNS: readonly string[] = ["left", "center", "right"];
+
+/**
+ * Normalise the `image` payload of an image block. The URL must be a plain
+ * http(s) address, so a crafted page cannot smuggle a `javascript:` or `data:`
+ * payload into every reader's browser. Returns null when the block is unusable.
+ */
+function sanitizeImage(input: unknown): PageImage | null {
+  if (!input || typeof input !== "object") return null;
+  const candidate = input as Record<string, unknown>;
+
+  const url = typeof candidate.url === "string" ? candidate.url.trim() : "";
+  if (!url || !isAllowedImageUrl(url)) return null;
+
+  const width = IMAGE_WIDTHS.includes(String(candidate.width)) ? (candidate.width as ImageWidth) : "medium";
+  const align = IMAGE_ALIGNS.includes(String(candidate.align)) ? (candidate.align as ImageAlign) : "center";
+  const alt = typeof candidate.alt === "string" ? candidate.alt.slice(0, MAX_CAPTION_LENGTH) : undefined;
+
+  const image: PageImage = {
+    url: url.slice(0, 2000),
+    bucket: typeof candidate.bucket === "string" ? candidate.bucket.slice(0, 100) : "",
+    path: typeof candidate.path === "string" ? candidate.path.slice(0, 500) : "",
+    width,
+    align
+  };
+  if (alt) image.alt = alt;
+  return image;
+}
+
+/** Absolute http(s) URL, or a same-origin path starting with `/`. */
+function isAllowedImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url, "https://local.invalid");
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 export function sanitizeBlocks(input: unknown, depth = 0): PageBlock[] {
   if (depth > MAX_BLOCK_DEPTH || !Array.isArray(input)) return [];
@@ -33,10 +74,23 @@ export function sanitizeBlocks(input: unknown, depth = 0): PageBlock[] {
     if (!raw || typeof raw !== "object") continue;
     const candidate = raw as Record<string, unknown>;
     const type = candidate.type;
-    if (type !== "paragraph" && type !== "heading" && type !== "toggle" && type !== "subpage") continue;
+    if (type !== "paragraph" && type !== "heading" && type !== "toggle" && type !== "subpage" && type !== "image") continue;
 
     const text = typeof candidate.text === "string" ? candidate.text.slice(0, MAX_TEXT_LENGTH) : "";
     const level = candidate.level === 1 || candidate.level === 2 || candidate.level === 3 ? candidate.level : undefined;
+
+    if (type === "image") {
+      const image = sanitizeImage(candidate.image);
+      if (!image) continue;
+      const block: PageBlock = {
+        id: typeof candidate.id === "string" && candidate.id ? candidate.id.slice(0, 64) : crypto.randomUUID(),
+        type,
+        text: text.slice(0, MAX_CAPTION_LENGTH),
+        image
+      };
+      blocks.push(block);
+      continue;
+    }
 
     const block: PageBlock = {
       id: typeof candidate.id === "string" && candidate.id ? candidate.id.slice(0, 64) : crypto.randomUUID(),

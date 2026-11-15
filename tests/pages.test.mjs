@@ -17,6 +17,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = "test-key";
 // --------------------------------------------------- Supabase REST emulation --
 
 let store = { pages: [] };
+let uploads = [];
 let idSeq = 0;
 
 function jsonResponse(data, status = 200) {
@@ -61,8 +62,22 @@ function defaultRow(payload) {
 
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(typeof input === "string" ? input : input.url);
-  const table = url.pathname.replace("/rest/v1/", "");
   const method = (init.method || "GET").toUpperCase();
+
+  // Storage endpoints are not PostgREST. Record each upload so a test can assert
+  // the object was stored, and answer like the real bucket would.
+  if (url.pathname.startsWith("/storage/v1/")) {
+    if (method === "POST" && url.pathname.startsWith("/storage/v1/object/")) {
+      uploads.push({
+        path: url.pathname,
+        bytes: Buffer.isBuffer(init.body) ? init.body.length : 0,
+        contentType: init.headers?.["content-type"]
+      });
+    }
+    return jsonResponse({ Key: url.pathname }, 200);
+  }
+
+  const table = url.pathname.replace("/rest/v1/", "");
   const rows = store[table] || (store[table] = []);
   const searchParams = url.searchParams;
 
@@ -160,7 +175,12 @@ async function sessionCookie(memberId, memberName) {
 }
 
 const API = "/api/web/members?resource=pages";
-const resetStore = () => { store = { pages: [] }; idSeq = 0; };
+const resetStore = () => { store = { pages: [] }; uploads = []; idSeq = 0; };
+
+// A 1x1 PNG, the smallest valid image for the upload tests.
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+const PNG_BYTES = Buffer.from(PNG_BASE64, "base64");
 
 // -------------------------------------------------------------------- tests --
 
@@ -325,4 +345,169 @@ test("an unknown action is rejected and existing routes still work", async () =>
 test("a tampered session cookie is rejected", async () => {
   resetStore();
   assert.equal((await call(`${API}&action=list`, { cookie: `${SESSION_COOKIE}=forged.value` })).statusCode, 401);
+});
+
+// ----------------------------------------------------------- image blocks --
+
+test("an image block keeps a safe url and normalises width and alignment", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    body: {
+      title: "Tutorial",
+      content: [
+        { id: "img1", type: "image", text: "Signup screen", image: { url: "https://cdn.example.com/a.png", width: "large", align: "right" } },
+        { id: "img2", type: "image", text: "", image: { url: "https://cdn.example.com/b.png", width: "huge", align: "diagonal" } }
+      ]
+    }
+  });
+
+  assert.equal(created.statusCode, 201);
+  const [first, second] = created.json().page.content;
+  assert.equal(first.type, "image");
+  assert.equal(first.text, "Signup screen");
+  assert.equal(first.image.width, "large");
+  assert.equal(first.image.align, "right");
+  // Unknown enum values fall back to the defaults rather than being stored.
+  assert.equal(second.image.width, "medium");
+  assert.equal(second.image.align, "center");
+});
+
+test("an image block with a javascript: url is dropped", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    body: {
+      title: "Tutorial",
+      content: [
+        { id: "evil", type: "image", text: "x", image: { url: "javascript:alert(1)", width: "full", align: "center" } },
+        { id: "ok", type: "image", text: "", image: { url: "https://cdn.example.com/ok.png" } },
+        { id: "empty", type: "image", text: "", image: { url: "" } }
+      ]
+    }
+  });
+
+  const ids = created.json().page.content.map((b) => b.id);
+  assert.deepEqual(ids, ["ok"]);
+  assert.equal(created.json().page.content[0].image.width, "medium");
+});
+
+test("an image block survives a round trip through update", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const id = (await call(`${API}&action=create`, {
+    method: "POST", cookie, body: { title: "Tutorial", content: [] }
+  })).json().page.id;
+
+  const updated = await call(`${API}&action=update&id=${id}`, {
+    method: "PATCH", cookie,
+    body: {
+      content: [{
+        id: "img1", type: "image", text: "Step 1 screenshot",
+        image: { url: "https://cdn.example.com/step1.png", bucket: "page-images", path: "betz/p1/abc.png", width: "small", align: "left" }
+      }]
+    }
+  });
+
+  assert.equal(updated.statusCode, 200);
+  const block = updated.json().page.content[0];
+  assert.equal(block.image.url, "https://cdn.example.com/step1.png");
+  assert.equal(block.image.path, "betz/p1/abc.png");
+  assert.equal(block.image.width, "small");
+  assert.equal(block.image.align, "left");
+  assert.equal(block.text, "Step 1 screenshot");
+});
+
+test("the caption is optional and capped at 500 characters", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const created = await call(`${API}&action=create`, {
+    method: "POST", cookie,
+    body: {
+      title: "Tutorial",
+      content: [
+        { id: "a", type: "image", text: "", image: { url: "https://cdn.example.com/a.png" } },
+        { id: "b", type: "image", text: "c".repeat(600), image: { url: "https://cdn.example.com/b.png" } }
+      ]
+    }
+  });
+
+  const [noCaption, longCaption] = created.json().page.content;
+  assert.equal(noCaption.text, "");
+  assert.equal(longCaption.text.length, 500);
+});
+
+test("uploading an image requires a session", async () => {
+  resetStore();
+  const response = await call(`${API}&action=upload-image`, { method: "POST", body: { data: PNG_BASE64 } });
+  assert.equal(response.statusCode, 401);
+  assert.equal(uploads.length, 0);
+});
+
+test("a signed-in member uploads an image and gets a stored url back", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const pageId = (await call(`${API}&action=create`, {
+    method: "POST", cookie, body: { title: "Tutorial", content: [] }
+  })).json().page.id;
+
+  const response = await call(`${API}&action=upload-image&id=${pageId}`, {
+    method: "POST", cookie, body: { data: `data:image/png;base64,${PNG_BASE64}` }
+  });
+
+  assert.equal(response.statusCode, 201);
+  const { image } = response.json();
+  assert.equal(image.bucket, "page-images");
+  assert.match(image.path, /^betz\/[0-9a-f-]+\/[0-9a-f]{16}\.png$/);
+  assert.match(image.url, /\/storage\/v1\/object\/public\/page-images\/betz\//);
+  assert.equal(uploads.length, 1);
+  assert.equal(uploads[0].bytes, PNG_BYTES.length);
+  assert.equal(uploads[0].contentType, "image/png");
+});
+
+test("only the page creator can attach an image to that page", async () => {
+  resetStore();
+  const owner = await sessionCookie("betz", "Betz");
+  const other = await sessionCookie("omar", "Omar");
+  const pageId = (await call(`${API}&action=create`, {
+    method: "POST", cookie: owner, body: { title: "Tutorial", content: [] }
+  })).json().page.id;
+
+  const denied = await call(`${API}&action=upload-image&id=${pageId}`, {
+    method: "POST", cookie: other, body: { data: PNG_BASE64 }
+  });
+  assert.equal(denied.statusCode, 403);
+  assert.equal(uploads.length, 0);
+
+  const allowed = await call(`${API}&action=upload-image&id=${pageId}`, {
+    method: "POST", cookie: owner, body: { data: PNG_BASE64 }
+  });
+  assert.equal(allowed.statusCode, 201);
+});
+
+test("uploading a non-image payload is refused", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const notAnImage = Buffer.from("#!/bin/sh\necho hello\n").toString("base64");
+
+  const response = await call(`${API}&action=upload-image`, {
+    method: "POST", cookie, body: { data: notAnImage }
+  });
+  assert.equal(response.statusCode, 415);
+  assert.equal(uploads.length, 0);
+});
+
+test("an oversized image is refused with 413", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  // A PNG header followed by padding, just over the 3 MB decoded limit.
+  const oversized = Buffer.concat([PNG_BYTES, Buffer.alloc(3 * 1024 * 1024)]);
+
+  const response = await call(`${API}&action=upload-image`, {
+    method: "POST", cookie, body: { data: oversized.toString("base64") }
+  });
+  assert.equal(response.statusCode, 413);
+  assert.equal(uploads.length, 0);
 });
