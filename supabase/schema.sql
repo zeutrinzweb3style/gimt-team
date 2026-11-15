@@ -419,8 +419,10 @@ create index if not exists spam_reports_reported_at_idx on public.spam_reports(r
 --
 -- `share_token` is the unguessable key in a page's shareable link. Every page
 -- gets one at creation, so a link can be shared before the page is finished.
--- `content` holds the editor blocks (headings, paragraphs, nested toggles) as
--- JSON so the shape can evolve without a migration.
+-- `content` holds the editor blocks (headings, paragraphs, nested toggles,
+-- subpage links and image blocks) as JSON so the shape can evolve without a
+-- migration. An image block stores its object url/path plus a caption, size and
+-- alignment; the bytes live in object storage, not here.
 create table if not exists public.pages (
   id uuid primary key default gen_random_uuid(),
   parent_id uuid references public.pages(id) on delete cascade,

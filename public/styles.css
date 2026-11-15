@@ -1455,6 +1455,54 @@ textarea.pg-h3 { font-size: 15.5px; }
   text-decoration-color: rgb(203 213 225); text-underline-offset: 3px;
 }
 .pg-subpage-link:hover { text-decoration-color: rgb(13 148 136); }
+
+/* ---- image block ---- */
+.pg-block-image { flex-direction: column; align-items: stretch; padding: 6px 0; }
+.pg-figure { margin: 0; display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
+.pg-image { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid rgb(226 232 240); }
+.dark .pg-image { border-color: rgb(51 65 85); }
+.pg-image-missing {
+  display: grid; place-items: center; min-height: 120px;
+  color: rgb(100 116 139); font-size: 13px;
+  background: rgb(248 250 252); border-style: dashed;
+}
+.dark .pg-image-missing { background: rgb(30 41 59); }
+.pg-img-w-small { width: 220px; }
+.pg-img-w-medium { width: 420px; }
+.pg-img-w-large { width: 640px; }
+.pg-img-w-full { width: 100%; }
+.pg-img-a-left { align-self: flex-start; }
+.pg-img-a-center { align-self: center; }
+.pg-img-a-right { align-self: flex-end; }
+.pg-img-a-right .pg-image-caption { text-align: right; }
+.pg-image-caption {
+  font-size: 12px; color: rgb(100 116 139); text-align: center;
+  padding: 0 4px; line-height: 1.5;
+}
+textarea.pg-image-caption { border: none; background: transparent; resize: none; outline: none; font-family: inherit; overflow: hidden; }
+textarea.pg-image-caption:focus { background: rgb(248 250 252); border-radius: 6px; }
+.dark textarea.pg-image-caption:focus { background: rgb(30 41 59); }
+.pg-image-toolbar {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+  opacity: 0; transition: opacity 120ms ease;
+}
+.pg-block-image:hover .pg-image-toolbar,
+.pg-block-image:focus-within .pg-image-toolbar { opacity: 1; }
+.pg-image-group {
+  display: flex; gap: 2px; padding: 2px;
+  border-radius: 8px; border: 1px solid rgb(226 232 240); background: white;
+}
+.dark .pg-image-group { border-color: rgb(51 65 85); background: rgb(15 23 42); }
+.pg-image-btn {
+  border: none; background: transparent; cursor: pointer; color: rgb(71 85 105);
+  font-size: 12px; padding: 4px 8px; border-radius: 6px; line-height: 1;
+}
+.pg-image-btn:hover { background: rgb(241 245 249); }
+.dark .pg-image-btn { color: rgb(203 213 225); }
+.dark .pg-image-btn:hover { background: rgb(30 41 59); }
+.pg-image-btn.is-active { background: rgb(13 148 136); color: white; }
+.pg-image-btn-danger:hover { color: rgb(185 28 28); background: rgb(254 226 226); }
+
 .pg-add-block {
   margin-top: 12px; width: 100%; text-align: left;
   border: 1px dashed rgb(203 213 225); background: transparent; cursor: pointer;

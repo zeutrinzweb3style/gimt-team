@@ -14,6 +14,8 @@ import {
   wouldCreateCycle
 } from "../../src/lib/pages.js";
 import { getSupabase, type PageBlock } from "../../src/lib/supabase.js";
+import { MAX_IMAGE_BYTES, decodeBase64Image, detectImageFormat, storePageImage } from "../../src/lib/page-images.js";
+import { getStorage } from "../../src/lib/storage.js";
 import {
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
@@ -268,6 +270,54 @@ async function handlePages(request: any, response: any, url: URL): Promise<void>
     const removed = collectDescendantIds(all, id);
     await deletePage(db, id);
     sendJson(response, 200, { ok: true, deleted: removed.length });
+    return;
+  }
+
+  if (action === "upload-image") {
+    const body = await readJsonBody(request);
+    if (!body) {
+      sendJson(response, 400, { ok: false, error: "Expected a JSON body." });
+      return;
+    }
+    const bytes = typeof body.data === "string" ? decodeBase64Image(body.data) : null;
+    if (!bytes || bytes.length === 0) {
+      sendJson(response, 400, { ok: false, error: "Expected base64 image data in `data`." });
+      return;
+    }
+    if (bytes.length > MAX_IMAGE_BYTES) {
+      sendJson(response, 413, {
+        ok: false,
+        error: `Image is too large. The limit is ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))} MB after resizing.`
+      });
+      return;
+    }
+    const format = detectImageFormat(bytes);
+    if (!format) {
+      sendJson(response, 415, { ok: false, error: "Unsupported image format. Use JPEG, PNG, GIF or WebP." });
+      return;
+    }
+    // Only the creator of the target page may attach images to it, mirroring the
+    // edit rule for the page body.
+    const pageId = url.searchParams.get("id") || "";
+    if (pageId) {
+      const page = await getPageById(db, pageId);
+      if (!page) {
+        sendJson(response, 404, { ok: false, error: "Page not found." });
+        return;
+      }
+      if (page.created_by_member_id !== session.memberId) {
+        sendJson(response, 403, { ok: false, error: "Only the member who created this page can add images to it." });
+        return;
+      }
+    }
+
+    const stored = await storePageImage(getStorage(), {
+      bytes,
+      format,
+      memberId: session.memberId,
+      pageId: pageId || "unassigned"
+    });
+    sendJson(response, 201, { ok: true, image: stored });
     return;
   }
 

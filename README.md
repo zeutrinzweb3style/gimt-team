@@ -253,12 +253,21 @@ dashboard archive. Both only appear once the member is authenticated.
   it is never listed anywhere else. A page is therefore unlisted: it is only
   reachable by whoever holds the link.
 - **Blocks and toggle headings.** The page body is a JSON array of blocks
-  (`paragraph`, `heading`, `toggle`, `subpage`). A `toggle` owns the blocks
-  nested beneath it and collapses on click. Plain text is the default: just
-  type a caption or description into any line. The slash menu is optional — it
-  only opens when a line starts with `/`. `/heading` turns a line into a
-  toggle heading, `/h1`–`/h3` make plain headings, and `/page` creates a nested
-  subpage and links it into the body.
+  (`paragraph`, `heading`, `toggle`, `subpage`, `image`). A `toggle` owns the
+  blocks nested beneath it and collapses on click. Plain text is the default:
+  just type a caption or description into any line. The slash menu is optional —
+  it only opens when a line starts with `/`. `/heading` turns a line into a
+  toggle heading, `/h1`–`/h3` make plain headings, `/page` creates a nested
+  subpage and links it into the body, and `/image` uploads a picture.
+- **Images.** `/image` on an empty line opens the device file picker and drops
+  the picture into the body, so a tutorial page can read "step 1: open the
+  website and click signup" above the screenshot. Each image block carries an
+  optional caption under it (small text), a size — **small**, **medium**,
+  **large** or **full** width — and an alignment — **left**, **center** or
+  **right**. The toolbar on the image offers **Replace** and **✕** (delete).
+  Uploads are downscaled in the browser and stored in the `page-images` bucket
+  through the same storage driver as proof-of-work photos, so the image stays
+  put across refreshes and can be opened from a share link.
 
 ### Pages API
 
@@ -274,9 +283,25 @@ within Vercel Hobby's 12-function limit.
 | `POST ?resource=pages&action=create` | session | Create a page or subpage. Body: `{ parentId, title, content }`. |
 | `POST ?resource=pages&action=update&id=<id>` | creator | Rename, save content, or move a page. Body: `{ title?, content?, parentId? }`. |
 | `POST ?resource=pages&action=delete&id=<id>` | creator | Delete a page; subpages cascade. |
+| `POST ?resource=pages&action=upload-image&id=<id>` | creator | Store a page image. Body: `{ data }` (base64, optional data-URL prefix). Returns `{ image: { url, bucket, path } }`. |
 
 The handler sanitises every incoming block tree (known types only, bounded depth
-and length) and refuses to move a page inside its own descendant.
+and length, and an image `url` must be plain `http(s)` — a `javascript:` or
+`data:` payload is dropped) and refuses to move a page inside its own
+descendant.
+
+### Image uploads
+
+`src/lib/page-images.ts` keeps the upload rules in one place. The API sniffs the
+real format from the file's leading bytes (JPEG, PNG, GIF or WebP) rather than
+trusting a declared content type, caps the decoded image at 3 MB, and writes it
+to the `page-images` bucket under `<member>/<page>/<random>.<ext>` via
+`getStorage()` — the same Supabase Storage / R2 driver the bot uses for proof
+photos. Uploading to a page you did not create is rejected with `403`, matching
+the edit rule for the body.
+
+The browser downscales to a 1600 px longest edge before sending, so a phone
+photo fits inside Vercel's request limit without the member doing anything.
 
 ### Running the tests
 
