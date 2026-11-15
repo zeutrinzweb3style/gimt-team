@@ -726,6 +726,94 @@ test("the proxy's x-forwarded-host is what Origin is compared against", async ()
   assert.equal(created.statusCode, 201);
 });
 
+// ---------------------------------------------------- markdown rendering --
+
+const { renderMarkdown, renderInlineMarkdown } = await import("../public/app/markdown.js");
+
+test("a pipe table becomes a real table with a header row", () => {
+  const html = renderMarkdown([
+    "| Wallet Metric | Reported Figure |",
+    "|---|---:|",
+    "| Previously reported verified wallets | 42 |",
+    "| Current total verified wallets | **51** |"
+  ].join("\n"));
+
+  assert.match(html, /<table class="pg-md-table">/);
+  assert.match(html, /<th>Wallet Metric<\/th>/);
+  assert.match(html, /<th style="text-align:right">Reported Figure<\/th>/);
+  assert.match(html, /<td>Previously reported verified wallets<\/td>/);
+  // Bold inside a cell is rendered, not printed as asterisks.
+  assert.match(html, /<td style="text-align:right"><strong>51<\/strong><\/td>/);
+  assert.doesNotMatch(html, /\*\*51\*\*/);
+  assert.doesNotMatch(html, /\|/);
+});
+
+test("a row that only has pipes and no separator stays a paragraph", () => {
+  const html = renderMarkdown("a | b plain");
+  assert.equal(html, "<p>a | b plain</p>");
+  assert.equal(renderMarkdown("| just | pipes |"), "<p>| just | pipes |</p>");
+});
+
+test("headings, lists and horizontal rules are rendered", () => {
+  const html = renderMarkdown([
+    "# Title",
+    "## Section",
+    "",
+    "- first",
+    "- second",
+    "",
+    "1. one",
+    "2. two",
+    "",
+    "---"
+  ].join("\n"));
+
+  assert.match(html, /<h1 class="pg-md-h">Title<\/h1>/);
+  assert.match(html, /<h2 class="pg-md-h">Section<\/h2>/);
+  assert.match(html, /<ul><li>first<\/li><li>second<\/li><\/ul>/);
+  assert.match(html, /<ol><li>one<\/li><li>two<\/li><\/ol>/);
+  assert.match(html, /<hr \/>/);
+});
+
+test("bold and italic are rendered", () => {
+  assert.equal(renderMarkdown("**51** verified"), "<p><strong>51</strong> verified</p>");
+  assert.equal(renderMarkdown("__+9__"), "<p><strong>+9</strong></p>");
+  assert.equal(renderMarkdown("a *word* here"), "<p>a <em>word</em> here</p>");
+});
+
+test("a bare URL becomes a clickable link and keeps its query string", () => {
+  const html = renderMarkdown("Dashboard: https://gimtteam.vercel.app/?member=betz&from=2026-11-01");
+  assert.match(html, /<a href="https:\/\/gimtteam\.vercel\.app\/\?member=betz&amp;from=2026-11-01" target="_blank" rel="noopener noreferrer">/);
+  assert.match(html, />https:\/\/gimtteam\.vercel\.app\/\?member=betz&amp;from=2026-11-01<\/a>/);
+});
+
+test("a trailing period or bracket is not swallowed into the link", () => {
+  assert.equal(
+    renderMarkdown("See https://kwentofi.live/community/p/272."),
+    '<p>See <a href="https://kwentofi.live/community/p/272" target="_blank" rel="noopener noreferrer">https://kwentofi.live/community/p/272</a>.</p>'
+  );
+  assert.equal(
+    renderMarkdown("(https://kwentofi.live/community/p/290)"),
+    '<p>(<a href="https://kwentofi.live/community/p/290" target="_blank" rel="noopener noreferrer">https://kwentofi.live/community/p/290</a>)</p>'
+  );
+});
+
+test("markdown and links are escaped, so a page body cannot inject HTML", () => {
+  assert.equal(renderMarkdown("<script>alert(1)</script>"), "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>");
+  assert.equal(renderMarkdown("**<b>x</b>**"), "<p><strong>&lt;b&gt;x&lt;/b&gt;</strong></p>");
+  assert.equal(renderMarkdown("[x](javascript:alert(1))"), "<p>[x](javascript:alert(1))</p>");
+  assert.equal(renderMarkdown("<img src=x onerror=alert(1)>"), "<p>&lt;img src=x onerror=alert(1)&gt;</p>");
+});
+
+test("a code span keeps its asterisks literal", () => {
+  assert.equal(renderMarkdown("use `**not bold**` here"), "<p>use <code>**not bold**</code> here</p>");
+});
+
+test("renderInlineMarkdown formats one line with no paragraph wrapper", () => {
+  assert.equal(renderInlineMarkdown("**51** wallets"), "<strong>51</strong> wallets");
+  assert.equal(renderInlineMarkdown("plain"), "plain");
+});
+
 test("reading pages is not blocked for a cross-site Origin", async () => {
   resetStore();
   const cookie = await sessionCookie("betz", "Betz");
