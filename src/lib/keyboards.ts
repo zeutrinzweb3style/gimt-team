@@ -1,5 +1,12 @@
 import { TEAM_SCHEDULE, getOtherMembers } from "./team-schedule.js";
+import { optionalEnv } from "./config.js";
 import type { InlineKeyboardMarkup } from "./telegram-types.js";
+
+/** Public dashboard base URL, used for Mini App and profile links. */
+export function getPublicBaseUrl(): string | null {
+  const base = (optionalEnv("PUBLIC_BASE_URL") || optionalEnv("CRON_BASE_URL") || "").replace(/\/$/, "");
+  return base || null;
+}
 
 export function registrationKeyboard(registeredMemberIds: Set<string> = new Set()): InlineKeyboardMarkup {
   const buttons = TEAM_SCHEDULE
@@ -15,28 +22,37 @@ export function registrationKeyboard(registeredMemberIds: Set<string> = new Set(
 }
 
 export function dashboardKeyboard(): InlineKeyboardMarkup {
-  return {
-    inline_keyboard: [
-      [
-        { text: "🟢 Time In", callback_data: "time:in" },
-        { text: "🔴 Time Out", callback_data: "time:out" }
-      ],
-      [
-        { text: "📋 My Status", callback_data: "status:me" },
-        { text: "📢 Activity", callback_data: "activity:list" }
-      ],
-      [
-        { text: "📝 Excuse", callback_data: "excuse:start" },
-        { text: "🚫 Absent", callback_data: "absent:start" }
-      ],
-      [
-        { text: "🔁 Shift Swap", callback_data: "swap:start" },
-        { text: "📎 Submit Proof", callback_data: "proof:start" }
-      ],
-      [{ text: "👤 My Profile", callback_data: "profile:menu" }],
-      [{ text: "🔄 Refresh", callback_data: "dashboard:refresh" }]
-    ]
-  };
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = [
+    [
+      { text: "🟢 Time In", callback_data: "time:in" },
+      { text: "🔴 Time Out", callback_data: "time:out" }
+    ],
+    [
+      { text: "📋 My Status", callback_data: "status:me" },
+      { text: "📢 Activity", callback_data: "activity:list" }
+    ],
+    [
+      { text: "📝 Excuse", callback_data: "excuse:start" },
+      { text: "🚫 Absent", callback_data: "absent:start" }
+    ],
+    [
+      { text: "🔁 Shift Swap", callback_data: "swap:start" },
+      { text: "📎 Submit Proof", callback_data: "proof:start" }
+    ],
+    [{ text: "👤 My Profile", callback_data: "profile:menu" }]
+  ];
+
+  // web_app buttons are only allowed in private chats. Every dashboardKeyboard()
+  // call site is a DM (group flows use the group* keyboards), so the Mini App
+  // launcher is safe to add here.
+  const base = getPublicBaseUrl();
+  if (base) {
+    rows.push([{ text: "🌐 Open Dashboard", web_app: { url: `${base}/` } }]);
+  }
+
+  rows.push([{ text: "🔄 Refresh", callback_data: "dashboard:refresh" }]);
+
+  return { inline_keyboard: rows };
 }
 
 export function profileMenuKeyboard(linkCount: number): InlineKeyboardMarkup {

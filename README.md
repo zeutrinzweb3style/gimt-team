@@ -10,6 +10,14 @@ Alongside the bot, the same Vercel deployment serves a read-only dashboard at th
 
 The dashboard is public read-only; all attendance actions (Time In, Time Out, Proof of Work, Excuse, Absent, Shift Swap) continue to be performed in the Telegram bot itself.
 
+### Opening the dashboard from the bot (Mini App)
+
+When `PUBLIC_BASE_URL` is set, the bot's DM dashboard keyboard gains an **🌐 Open Dashboard** row. It is a `web_app` button, so the dashboard opens inside Telegram as a Mini App instead of in an external browser.
+
+Telegram only allows `web_app` buttons in **private chats**, so the row is added to the DM keyboard only. Group keyboards (`groupTimeInKeyboard`, `groupTimeOutKeyboard`, `groupProofOfWorkKeyboard`) never carry it; every `dashboardKeyboard()` call site is a DM.
+
+For the Mini App to open on Telegram Web and Desktop, the domain must be registered with BotFather: `/setdomain` → your deployment host (for example `gimtteam.vercel.app`). Mobile works without it.
+
 ### Telegram login (identity only)
 
 The dashboard header shows a **Log in with Telegram** button, but only when the page is opened as a Telegram Mini App — that is, from a bot button that uses `web_app`. In a normal browser `window.Telegram.WebApp.initData` is empty, so the button never appears.
@@ -47,6 +55,9 @@ TELEGRAM_WEBHOOK_SECRET=
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 CRON_SECRET=
+# Optional. Deployment base URL. Enables the bot's "Open Dashboard" Mini App button
+# and the shareable profile links. Falls back to CRON_BASE_URL when unset.
+PUBLIC_BASE_URL=
 # Optional primary group notifications
 TEAM_GROUP_CHAT_ID=
 # Optional public stats allowlist for multiple Telegram groups (comma- or space-separated)
