@@ -263,7 +263,10 @@ dashboard archive. Both only appear once the member is authenticated.
   optional — it only opens when a line starts with `/`. `/heading` turns a line
   into a toggle heading, `/h1`–`/h3` make plain headings, `/page` creates a
   nested subpage and links it into the body, `/image` uploads a picture, and
-  `/table` drops in a grid.
+  `/table` drops in a grid. Creating a subpage takes you straight to it with its
+  title selected, so you can name it right away; whatever title you give it is
+  what the parent's block shows, and the same holds for every page created this
+  way.
 - **Tables.** `/table` on an empty line replaces it with a two-by-two grid for
   metrics and figures. Every cell is a plain text field; the toolbar adds a row
   or a column, toggles the first row as a header, or deletes the table. The grid

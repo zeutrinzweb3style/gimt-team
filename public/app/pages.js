@@ -618,7 +618,23 @@ async function applySlashCommand(blockId, command) {
     block.pageId = child.id;
     delete block.children;
     pagesState().expanded.add(current.id);
+    pagesState().dirty = true;
+    renderBlocks();
+    renderSidebar();
+    // Persist the parent's new subpage block before leaving it, so the link
+    // survives even if the user never comes back to this page.
+    await flushPendingSave();
     await loadPages();
+    // Land the user on the new subpage so they can name it right away. Its
+    // title then shows on the parent's block, and the same holds for every
+    // page created this way.
+    await openPage(child.id);
+    const titleEl = $("#pages-title");
+    if (titleEl instanceof HTMLInputElement) {
+      titleEl.focus();
+      titleEl.select();
+    }
+    return;
   } else if (command === "image") {
     // The file dialog is async; the picker resolves the block once a file is
     // chosen, so nothing else to do here.
