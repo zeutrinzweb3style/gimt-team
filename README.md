@@ -273,13 +273,8 @@ dashboard archive. Both only appear once the member is authenticated.
 - **Blocks and toggle headings.** The page body is a JSON array of blocks
   (`paragraph`, `heading`, `toggle`, `subpage`, `image`, `table`). A `toggle`
   owns the blocks nested beneath it and collapses on click. Plain text is the
-  default: just type a caption or description into any line. **Enter adds the
-  next block** — press it on a paragraph, a heading, an image caption or a
-  subpage link and a new line appears below; inside a toggle it appears under the
-  toggle; on a table cell it walks the grid and, from the last cell, leaves the
-  table. There is no separate "add a block" button: every block can be typed
-  past on its own. The slash menu is optional — it only opens when a line starts
-  with `/`. `/heading` turns a line
+  default: just type a caption or description into any line. The slash menu is
+  optional — it only opens when a line starts with `/`. `/heading` turns a line
   into a toggle heading, `/h1`–`/h3` make plain headings, `/page` creates a
   nested subpage and links it into the body, `/image` uploads a picture, and
   `/table` drops in a grid. Creating a subpage takes you straight to it with its
