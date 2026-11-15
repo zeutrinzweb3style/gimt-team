@@ -257,7 +257,10 @@ dashboard archive. Both only appear once the member is authenticated.
 - **Unlisted share links.** Each page gets a 32-character random `share_token`
   at creation. `/?page=<token>` opens that one page read-only with no login, and
   it is never listed anywhere else. A page is therefore unlisted: it is only
-  reachable by whoever holds the link.
+  reachable by whoever holds the link. A share link is also **standalone**: the
+  dashboard chrome (brand bar, Telegram login, nav tabs, Refresh, footer) is
+  hidden, so a visitor who holds only the link sees the page content and nothing
+  else.
 - **Blocks and toggle headings.** The page body is a JSON array of blocks
   (`paragraph`, `heading`, `toggle`, `subpage`, `image`, `table`). A `toggle`
   owns the blocks nested beneath it and collapses on click. Plain text is the

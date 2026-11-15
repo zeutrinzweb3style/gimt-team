@@ -329,10 +329,13 @@ export async function init() {
   const resolveInitialRoute = async () => {
     if (initialShareToken) {
       // A page share link opens the page by itself, with no login and no sidebar.
+      // Select the shared panel first so the visitor sees the page shell (and its
+      // loading state) instead of an empty dashboard while the page loads.
       document.body.dataset.homeContinued = "true";
+      switchTab("pages-shared");
       openPageByToken(initialShareToken)
-        .then(() => { renderSharedPage(); switchTab("pages-shared"); })
-        .catch(() => { renderSharedPage(); switchTab("pages-shared"); });
+        .then(renderSharedPage)
+        .catch(renderSharedPage);
     } else {
       // Issue links use the canonical category list; defer only that deep link,
       // never the ordinary Home screen, until the category request completes.

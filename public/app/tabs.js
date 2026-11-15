@@ -14,6 +14,10 @@ export function switchTab(name) {
   const previousTab = state.currentTab;
   state.currentTab = name;
   document.body.classList.toggle("member-profile-mode", name === "member");
+  // A shared page is a standalone read for whoever holds the link, so the
+  // dashboard shell (brand bar, Telegram login, nav tabs, refresh) and the
+  // footer step aside and the page content owns the screen.
+  document.body.classList.toggle("shared-page-mode", name === "pages-shared");
   document.body.classList.toggle("home-welcome-mode", name === "home" && document.body.dataset.homeContinued !== "true");
   for (const btn of $all(".tab-btn")) {
     btn.setAttribute("aria-selected", btn.dataset.tab === name ? "true" : "false");
