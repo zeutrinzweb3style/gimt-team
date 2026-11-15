@@ -68,6 +68,28 @@ function findPage(id) {
   return (linked && linked.find((page) => page.id === id)) || null;
 }
 
+/** Depth-first search of the nested sidebar tree. */
+function findTreeNode(nodes, id) {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const hit = findTreeNode(node.children || [], id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * Record new metadata for a page. The sidebar renders the nested `tree` while
+ * lookups use the flat `pages` list, and the two hold separate objects, so both
+ * have to be updated or the sidebar keeps showing the old title.
+ */
+function applyPageMetadata(id, { title, updatedAt }) {
+  const listed = findPage(id);
+  if (listed) { listed.title = title; listed.updated_at = updatedAt; }
+  const node = findTreeNode(pagesState().tree, id);
+  if (node) { node.title = title; node.updated_at = updatedAt; }
+}
+
 function canEdit(page) {
   return Boolean(page) && page.created_by_member_id === pagesState().memberId;
 }
@@ -101,6 +123,39 @@ function autosizeAll(root = document) {
 // ---------------------------------------------------------------- data ----
 
 let pagesLoadInFlight = null;
+// Bumped whenever a page is created or deleted. A list request that started
+// before such a change can return a snapshot that predates it, which would show
+// a sidebar missing the new page, so that response is discarded and refetched.
+let pagesRevision = 0;
+
+/** Note that the set of pages changed, so any in-flight list response is stale. */
+function markPagesChanged() {
+  pagesRevision += 1;
+}
+
+async function fetchAndApplyPages() {
+  const container = $("#pages-sidebar-tree");
+  for (;;) {
+    const revision = pagesRevision;
+    try {
+      const data = await fetchJson(`${PAGES_API}&action=list`);
+      // A page was created or deleted while this was in flight, so the response
+      // may not include it. Fetch again instead of rendering a stale list.
+      if (revision !== pagesRevision) continue;
+      pagesState().memberId = data.member?.member_id || "";
+      pagesState().pages = data.pages || [];
+      pagesState().tree = data.tree || [];
+      pagesState().loaded = true;
+      renderSidebar();
+      return;
+    } catch (error) {
+      pagesState().loaded = false;
+      const message = error instanceof Error ? error.message : String(error);
+      if (container) container.innerHTML = `<p class="pg-sidebar-empty">Could not load pages: ${escapeHtml(message)}</p>`;
+      return;
+    }
+  }
+}
 
 export function loadPages() {
   const container = $("#pages-sidebar-tree");
@@ -108,22 +163,9 @@ export function loadPages() {
   if (pagesLoadInFlight) return pagesLoadInFlight;
 
   container.innerHTML = '<p class="pg-sidebar-empty">Loading pages…</p>';
-  pagesLoadInFlight = fetchJson(`${PAGES_API}&action=list`)
-    .then((data) => {
-      pagesState().memberId = data.member?.member_id || "";
-      pagesState().pages = data.pages || [];
-      pagesState().tree = data.tree || [];
-      pagesState().loaded = true;
-      renderSidebar();
-    })
-    .catch((error) => {
-      pagesState().loaded = false;
-      const message = error instanceof Error ? error.message : String(error);
-      container.innerHTML = `<p class="pg-sidebar-empty">Could not load pages: ${escapeHtml(message)}</p>`;
-    })
-    .finally(() => {
-      pagesLoadInFlight = null;
-    });
+  pagesLoadInFlight = fetchAndApplyPages().finally(() => {
+    pagesLoadInFlight = null;
+  });
   return pagesLoadInFlight;
 }
 
@@ -154,6 +196,7 @@ async function createPage(parentId) {
     title: parentId ? "Untitled subpage" : "Untitled page",
     content: []
   });
+  markPagesChanged();
   await loadPages();
   await openPage(data.page.id);
   return data.page;
@@ -166,6 +209,7 @@ async function createChildPageForBlock(parentPageId) {
     content: []
   });
   pagesState().pages.push(data.page);
+  markPagesChanged();
   return data.page;
 }
 
@@ -185,8 +229,7 @@ export async function saveCurrentPage() {
     .then((data) => {
       current.title = data.page.title;
       current.updated_at = data.page.updated_at;
-      const listed = findPage(current.id);
-      if (listed) { listed.title = data.page.title; listed.updated_at = data.page.updated_at; }
+      applyPageMetadata(current.id, { title: data.page.title, updatedAt: data.page.updated_at });
       renderSidebar();
       setSaveStatus("Saved");
     })
@@ -223,6 +266,7 @@ async function removeCurrentPage() {
   pagesState().current = null;
   pagesState().currentId = null;
   pagesState().working = [];
+  markPagesChanged();
   await loadPages();
   renderEditor();
 }
