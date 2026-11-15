@@ -10,6 +10,23 @@ Alongside the bot, the same Vercel deployment serves a read-only dashboard at th
 
 The dashboard is public read-only; all attendance actions (Time In, Time Out, Proof of Work, Excuse, Absent, Shift Swap) continue to be performed in the Telegram bot itself.
 
+### Telegram login (identity only)
+
+The dashboard header shows a **Log in with Telegram** button, but only when the page is opened as a Telegram Mini App — that is, from a bot button that uses `web_app`. In a normal browser `window.Telegram.WebApp.initData` is empty, so the button never appears.
+
+Clicking it sends `initData` to `/api/web/members?auth=login`, which:
+
+1. verifies the payload against the bot token with HMAC-SHA-256 (`secret_key = HMAC_SHA256(bot_token, "WebAppData")`),
+2. rejects payloads older than one hour (replay protection),
+3. requires the Telegram user to be a registered team member (`team_registrations`), and
+4. sets an `HttpOnly` signed session cookie (`gimt_session`, 12 hours).
+
+`GET /api/web/members?auth=me` returns the connected member, and `POST /api/web/members?auth=logout` clears the cookie. Everything is served from the existing members function, so Vercel stays at 12 functions.
+
+This is **identity only**: it proves which member is viewing the dashboard. It does not change the public read access of the data, and it is not a substitute for protecting the dashboard.
+
+Optional: set `SESSION_SECRET` to sign session cookies with a key other than the bot token. If it is unset, the bot token is used.
+
 ## Team schedule
 
 | Member | UTC Shift | Local timezone |

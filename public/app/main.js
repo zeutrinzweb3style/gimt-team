@@ -3,6 +3,7 @@
 
 
 import { renderActivity } from "./activity.js";
+import { initTelegramAuth } from "./auth.js";
 import { loadCommunitySummary } from "./community-summary.js";
 import { loadIssueCategories, normalizeIssueCategory } from "./issue-categories.js";
 import { defaultIssueRange, getIssueUrlParams, loadIssueReport, openIssueReport, updateIssueUrlParams } from "./issue-report.js";
@@ -19,6 +20,7 @@ import { $, $all, copyTextToButton, debounce, memberLink, wireSorting } from "./
 
 export async function init() {
   initDefaultDates();
+  initTelegramAuth();
   $("#activity-member").setAttribute("data-members-select", "1");
   $("#proof-member").setAttribute("data-members-select", "1");
   $("#tickets-assigned-member").setAttribute("data-members-select", "1");
