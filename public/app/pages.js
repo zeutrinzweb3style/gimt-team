@@ -94,6 +94,20 @@ function canEdit(page) {
   return Boolean(page) && page.created_by_member_id === pagesState().memberId;
 }
 
+/**
+ * Build a page's share link. The query is replaced and the hash dropped: inside
+ * a Telegram Mini App the URL carries `#tgWebAppData=…`, which is Telegram's
+ * signed init payload, so keeping the hash made the copied link hundreds of
+ * characters long and pasted Telegram's login data into every chat.
+ */
+function buildShareUrl(shareToken) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("page", shareToken);
+  return url;
+}
+
 /** Ancestor links (root first) so a subpage can navigate back to its parent. */
 function parentTrail(page) {
   const byId = new Map(pagesState().pages.map((entry) => [entry.id, entry]));
@@ -151,7 +165,11 @@ async function fetchAndApplyPages() {
     } catch (error) {
       pagesState().loaded = false;
       const message = error instanceof Error ? error.message : String(error);
-      if (container) container.innerHTML = `<p class="pg-sidebar-empty">Could not load pages: ${escapeHtml(message)}</p>`;
+      if (container) {
+        container.innerHTML =
+          `<p class="pg-sidebar-empty">Could not load pages: ${escapeHtml(message)}</p>` +
+          '<button type="button" id="pages-retry" class="pg-btn pg-retry">Try again</button>';
+      }
       return;
     }
   }
@@ -332,9 +350,7 @@ function renderEditor() {
 
   const editable = canEdit(current);
   const trail = parentTrail(current);
-  const shareUrl = new URL(window.location.href);
-  shareUrl.search = "";
-  shareUrl.searchParams.set("page", current.share_token);
+  const shareUrl = buildShareUrl(current.share_token);
 
   container.innerHTML = `
     ${trail ? `<p class="pg-editor-trail">${trail}</p>` : ""}
@@ -394,13 +410,24 @@ function blockText(block, editable, placeholder) {
     placeholder="${hint}">${escapeHtml(block.text || "")}</textarea>`;
 }
 
+/**
+ * The subpage block as a read-only link. A shared page is opened with no
+ * session, so the subpage cannot be fetched by id the way the editor does; it
+ * opens through its own share link instead, which `linkedPages` now carries.
+ */
+function renderReadonlySubpageLink(block, child, title) {
+  const token = child?.share_token;
+  if (!token) return `<span class="pg-subpage-link pg-subpage-static">${escapeHtml(title)}</span>`;
+  return `<a class="pg-subpage-link" href="?page=${encodeURIComponent(token)}">${escapeHtml(title)}</a>`;
+}
+
 function renderBlock(block, editable) {
   if (block.type === "subpage") {
     const child = findPage(block.pageId);
     const title = child ? child.title : "Missing subpage";
     const label = editable
       ? `<button type="button" class="pg-subpage-link" data-pg-open="${escapeHtml(block.pageId || "")}">${escapeHtml(title)}</button>`
-      : `<span class="pg-subpage-link pg-subpage-static">${escapeHtml(title)}</span>`;
+      : renderReadonlySubpageLink(block, child, title);
     return `
       <div class="pg-block pg-block-subpage" data-pg-block="${escapeHtml(block.id)}">
         <span class="pg-subpage-icon">📄</span>
@@ -733,6 +760,11 @@ function initSidebarEvents() {
   if (!sidebar) return;
 
   sidebar.addEventListener("click", (event) => {
+    const retry = event.target.closest("#pages-retry");
+    if (retry) {
+      loadPages().catch(showError);
+      return;
+    }
     const toggle = event.target.closest("[data-pg-toggle]");
     if (toggle) {
       const id = toggle.dataset.pgToggle;

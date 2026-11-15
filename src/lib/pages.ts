@@ -1,4 +1,4 @@
-import { eq, order, params, type ImageAlign, type ImageWidth, type Page, type PageBlock, type PageImage, type PageTable, type SupabaseRestClient } from "./supabase.js";
+import { eq, inList, order, params, type ImageAlign, type ImageWidth, type Page, type PageBlock, type PageImage, type PageTable, type SupabaseRestClient } from "./supabase.js";
 
 // Hierarchical pages (Notion-style). A page is a row in `public.pages`; nesting
 // is a self-reference through `parent_id`. Every page carries an unguessable
@@ -179,6 +179,22 @@ export async function listPageSummaries(db: SupabaseRestClient): Promise<PageSum
   return db.select<PageSummary>("pages", params(
     ["select", "id,parent_id,title,created_by_member_id,created_by_member_name,created_at,updated_at,updated_by_member_id"],
     order("created_at", true)
+  ));
+}
+
+/**
+ * Title and share token for a specific set of pages. Used by the shared view so
+ * a subpage block can link to its own share link; the bulk summary list keeps
+ * tokens out of it on purpose.
+ */
+export async function listPageShareLinks(
+  db: SupabaseRestClient,
+  ids: ReadonlyArray<string>
+): Promise<{ id: string; title: string; share_token: string }[]> {
+  if (ids.length === 0) return [];
+  return db.select<{ id: string; title: string; share_token: string }>("pages", params(
+    ["select", "id,title,share_token"],
+    inList("id", ids)
   ));
 }
 

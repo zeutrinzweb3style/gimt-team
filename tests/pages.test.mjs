@@ -281,9 +281,26 @@ test("a shared subpage link reports the linked subpage titles", async () => {
 
   const shared = await call(`${API}&action=shared&token=${root.share_token}`);
   assert.equal(shared.statusCode, 200);
-  // Without the page list a shared reader still gets the title of each linked subpage.
-  assert.deepEqual(shared.json().linkedPages, [{ id: child.id, title: "Child Doc" }]);
+  // A shared reader has no page list, so the linked subpage carries its own
+  // share token: that is what lets the subpage block open on the shared page.
+  assert.deepEqual(shared.json().linkedPages, [{ id: child.id, title: "Child Doc", share_token: child.share_token }]);
   assert.deepEqual(shared.json().breadcrumb.map((crumb) => crumb.title), ["Parent"]);
+});
+
+test("the shared subpage link is openable without a login", async () => {
+  resetStore();
+  const cookie = await sessionCookie("betz", "Betz");
+  const root = (await call(`${API}&action=create`, { method: "POST", cookie, body: { title: "Parent", content: [] } })).json().page;
+  const child = (await call(`${API}&action=create`, { method: "POST", cookie, body: { parentId: root.id, title: "Child Doc", content: [{ id: "p", type: "paragraph", text: "Body" }] } })).json().page;
+  await call(`${API}&action=update&id=${root.id}`, {
+    method: "POST", cookie, body: { content: [{ id: "s", type: "subpage", pageId: child.id }] }
+  });
+
+  const token = (await call(`${API}&action=shared&token=${root.share_token}`)).json().linkedPages[0].share_token;
+  const opened = await call(`${API}&action=shared&token=${token}`);
+  assert.equal(opened.statusCode, 200);
+  assert.equal(opened.json().page.title, "Child Doc");
+  assert.equal(opened.json().page.content[0].text, "Body");
 });
 
 test("a page can be moved under a new parent", async () => {
