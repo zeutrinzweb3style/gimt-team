@@ -64,7 +64,9 @@ export type TelegramUpdate = {
 
 export type InlineKeyboardButton = {
   text: string;
-  callback_data: string;
+  callback_data?: string;
+  // Telegram only allows web_app buttons in private chats.
+  web_app?: { url: string };
 };
 
 export type InlineKeyboardMarkup = {
