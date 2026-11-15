@@ -68,6 +68,17 @@ function findPage(id) {
   return (linked && linked.find((page) => page.id === id)) || null;
 }
 
+/**
+ * The share token for a subpage, which only the shared endpoint exposes. The
+ * sidebar list deliberately omits it, so a logged-in reader of a share link
+ * would find the subpage in `pages` and lose the link; read it from
+ * `linkedPages` regardless of which page list is loaded.
+ */
+function findPageShareToken(id) {
+  const linked = pagesState().shared?.linkedPages;
+  return (linked && linked.find((page) => page.id === id)?.share_token) || "";
+}
+
 /** Depth-first search of the nested sidebar tree. */
 function findTreeNode(nodes, id) {
   for (const node of nodes) {
@@ -416,7 +427,7 @@ function blockText(block, editable, placeholder) {
  * opens through its own share link instead, which `linkedPages` now carries.
  */
 function renderReadonlySubpageLink(block, child, title) {
-  const token = child?.share_token;
+  const token = findPageShareToken(block.pageId) || child?.share_token;
   if (!token) return `<span class="pg-subpage-link pg-subpage-static">${escapeHtml(title)}</span>`;
   return `<a class="pg-subpage-link" href="?page=${encodeURIComponent(token)}">${escapeHtml(title)}</a>`;
 }

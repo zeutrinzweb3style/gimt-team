@@ -734,3 +734,46 @@ test("reading pages is not blocked for a cross-site Origin", async () => {
   });
   assert.equal(list.statusCode, 200);
 });
+
+// ------------------------------------------------------ shared-page render --
+
+test("a logged-in reader still gets the subpage link on a shared page", async () => {
+  // Regression: findPage() preferred the sidebar `pages` list, which omits
+  // share_token by design. A reader who happened to be signed in found the
+  // subpage there, so the block rendered as a non-clickable span and the
+  // subpage could not be opened from the shared page.
+  const childId = "6504e0e8-d082-472c-ad25-37e70cb36cf0";
+  const token = "16ff51ddf70d6922cc1455e8b5cbb2d1";
+
+  const container = { dataset: {}, innerHTML: "", addEventListener() {} };
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    querySelector: (selector) => (selector === "#pages-shared" ? container : null)
+  };
+
+  try {
+    const { state } = await import("../public/app/state.js");
+    const { renderSharedPage } = await import("../public/app/pages.js");
+
+    // The signed-in reader's sidebar list is loaded and carries no share_token.
+    state.pages.pages = [{ id: childId, parent_id: null, title: "Month of July" }];
+    state.pages.memberId = "reader";
+    state.pages.shared = {
+      page: {
+        id: "root",
+        title: "Community Moderator",
+        created_by_member_name: "Betz",
+        content: [{ id: "s", type: "subpage", pageId: childId }]
+      },
+      breadcrumb: [{ id: "root", title: "Community Moderator" }],
+      linkedPages: [{ id: childId, title: "Month of July", share_token: token }]
+    };
+
+    renderSharedPage();
+
+    assert.match(container.innerHTML, new RegExp(`<a class="pg-subpage-link" href="\\?page=${token}"`));
+    assert.doesNotMatch(container.innerHTML, /pg-subpage-static/);
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
