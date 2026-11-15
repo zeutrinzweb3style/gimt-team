@@ -122,6 +122,18 @@ export const state = {
     to: "",
     data: null,
     loading: false
+  },
+  pages: {
+    pages: [],
+    tree: [],
+    expanded: new Set(),
+    memberId: "",
+    currentId: null,
+    current: null,
+    working: [],
+    dirty: false,
+    shared: null,
+    loaded: false
   }
 };
 

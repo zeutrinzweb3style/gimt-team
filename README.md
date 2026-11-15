@@ -221,13 +221,74 @@ The dashboard lives in the [`public/`](public) folder and is served as a static 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/web/members` | Static team roster + registration state (used to populate the member filter). |
+| `GET /api/web/members?auth=me` | The signed-in member, or `connected: null`. |
+| `GET /api/web/members?resource=pages&action=…` | Hierarchical pages API. See [Hierarchical pages](#hierarchical-pages). |
 | `GET /api/web/activity?member_id=&action=&limit=` | Paginated `activity_logs` rows, newest first. |
 | `GET /api/web/group-stats?member_id=&telegram_chat_id=&from=&to=&limit=` | `group_message_stats` rows enriched with Telegram group names, group list, per-member totals, and per-group totals. |
 | `GET /api/web/proof-submissions?member_id=&from=&to=&limit=` | `proof_of_work_submissions` rows, newest first. |
 
-The dashboard is intentionally read-only and has no authentication. Anything sensitive should stay in Supabase row-level security or be omitted from these endpoints.
+The dashboard is mostly read-only and public. The two exceptions are Telegram
+login (`?auth=me|login|logout`) and the pages API: both require a signed session
+cookie, and the pages API additionally limits edits to the page's creator.
+Anything else sensitive should stay in Supabase row-level security or be omitted
+from these endpoints.
 
 The frontend is a plain ES-module SPA with no build step. `public/index.html` loads `public/styles.css` and `public/app/main.js`; the rest of the UI lives in small modules under [`public/app/`](public/app) (state, shared utils, and one module per dashboard section).
+
+## Hierarchical pages
+
+A Notion-style tree of pages and nested subpages, for team members who are
+signed in with the Telegram Mini App. Open it with the **📄 Open Pages** button
+in the home directory; the Pages tab in the top bar shows the same view in the
+dashboard archive. Both only appear once the member is authenticated.
+
+- **Hierarchy.** A page has an optional parent (`pages.parent_id`), so a main
+  page can hold any number of nested subpages. The sidebar shows the whole tree
+  and a **New page** button creates a top-level page.
+- **Visibility (Option B).** Every signed-in member sees every page in the
+  sidebar. Only the member who created a page can rename, edit, move or delete
+  it; the API rejects anyone else with `403`.
+- **Unlisted share links.** Each page gets a 32-character random `share_token`
+  at creation. `/?page=<token>` opens that one page read-only with no login, and
+  it is never listed anywhere else. A page is therefore unlisted: it is only
+  reachable by whoever holds the link.
+- **Blocks and toggle headings.** The page body is a JSON array of blocks
+  (`paragraph`, `heading`, `toggle`, `subpage`). A `toggle` owns the blocks
+  nested beneath it and collapses on click. `/heading` turns a line into a
+  toggle heading, `/h1`–`/h3` make plain headings, and `/page` creates a nested
+  subpage and links it into the body. Every line has a slash menu.
+
+### Pages API
+
+All routes are served by `api/web/members.ts` under
+`?resource=pages&action=…`, reusing the existing function so the project stays
+within Vercel Hobby's 12-function limit.
+
+| Route | Auth | Purpose |
+| --- | --- | --- |
+| `GET ?resource=pages&action=shared&token=<token>` | none | One page by share token, plus its breadcrumb. |
+| `GET ?resource=pages&action=list` | session | Every page (flat list) and the nested tree. |
+| `GET ?resource=pages&action=get&id=<id>` | session | A single page. |
+| `POST ?resource=pages&action=create` | session | Create a page or subpage. Body: `{ parentId, title, content }`. |
+| `POST ?resource=pages&action=update&id=<id>` | creator | Rename, save content, or move a page. Body: `{ title?, content?, parentId? }`. |
+| `POST ?resource=pages&action=delete&id=<id>` | creator | Delete a page; subpages cascade. |
+
+The handler sanitises every incoming block tree (known types only, bounded depth
+and length) and refuses to move a page inside its own descendant.
+
+### Running the tests
+
+`tests/pages.test.mjs` exercises the real handler against a stub of the Supabase
+REST endpoints, so the login check, the creator-only rule, share tokens,
+sanitisation and the delete cascade all run as they do in production.
+
+```bash
+npm test        # compiles to .test-build/ and runs node --test
+npm run check   # tsc --noEmit
+```
+
+Apply the new table with the rest of [`supabase/schema.sql`](supabase/schema.sql)
+(`public.pages`).
 
 ## Cron routes
 

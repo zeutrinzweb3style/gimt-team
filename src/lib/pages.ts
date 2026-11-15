@@ -1,0 +1,190 @@
+import { eq, order, params, type Page, type PageBlock, type SupabaseRestClient } from "./supabase.js";
+
+// Hierarchical pages (Notion-style). A page is a row in `public.pages`; nesting
+// is a self-reference through `parent_id`. Every page carries an unguessable
+// `share_token` so a single page can be shared by link, and the token never
+// changes once issued.
+
+/** A share token is 32 hex characters (16 random bytes). */
+export function createShareToken(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function isValidShareToken(token: string | undefined | null): boolean {
+  return typeof token === "string" && /^[0-9a-f]{32}$/.test(token);
+}
+
+/**
+ * Blocks arrive from the browser as JSON, so normalise the tree before it is
+ * stored: keep only known fields, drop empty blocks, and bound the depth so a
+ * crafted payload cannot produce an unbounded tree.
+ */
+const MAX_BLOCK_DEPTH = 6;
+const MAX_BLOCKS_PER_LEVEL = 500;
+const MAX_TEXT_LENGTH = 20000;
+
+export function sanitizeBlocks(input: unknown, depth = 0): PageBlock[] {
+  if (depth > MAX_BLOCK_DEPTH || !Array.isArray(input)) return [];
+
+  const blocks: PageBlock[] = [];
+  for (const raw of input.slice(0, MAX_BLOCKS_PER_LEVEL)) {
+    if (!raw || typeof raw !== "object") continue;
+    const candidate = raw as Record<string, unknown>;
+    const type = candidate.type;
+    if (type !== "paragraph" && type !== "heading" && type !== "toggle" && type !== "subpage") continue;
+
+    const text = typeof candidate.text === "string" ? candidate.text.slice(0, MAX_TEXT_LENGTH) : "";
+    const level = candidate.level === 1 || candidate.level === 2 || candidate.level === 3 ? candidate.level : undefined;
+
+    const block: PageBlock = {
+      id: typeof candidate.id === "string" && candidate.id ? candidate.id.slice(0, 64) : crypto.randomUUID(),
+      type,
+      text
+    };
+    if (level !== undefined) block.level = level;
+    if (type === "toggle") block.collapsed = candidate.collapsed === true;
+    if (type === "subpage" && typeof candidate.pageId === "string") block.pageId = candidate.pageId.slice(0, 64);
+
+    const children = sanitizeBlocks(candidate.children, depth + 1);
+    if (children.length > 0) block.children = children;
+
+    // A heading/toggle with no text and no children is an empty stub; a paragraph
+    // with no text is also empty. Neither is worth persisting.
+    if (type !== "subpage" && !block.text.trim() && !block.children?.length) continue;
+    blocks.push(block);
+  }
+  return blocks;
+}
+
+export function sanitizeTitle(input: unknown): string {
+  const title = typeof input === "string" ? input.trim() : "";
+  return title.slice(0, 300) || "Untitled";
+}
+
+/** Every page, newest first. The dashboard builds the tree client-side. */
+export async function listPages(db: SupabaseRestClient): Promise<Page[]> {
+  return db.select<Page>("pages", params(order("created_at", true)));
+}
+
+export async function getPageById(db: SupabaseRestClient, id: string): Promise<Page | null> {
+  const rows = await db.select<Page>("pages", params(eq("id", id)));
+  return rows[0] ?? null;
+}
+
+export async function getPageByShareToken(db: SupabaseRestClient, token: string): Promise<Page | null> {
+  const rows = await db.select<Page>("pages", params(eq("share_token", token)));
+  return rows[0] ?? null;
+}
+
+export type CreatePageInput = {
+  parentId: string | null;
+  title: string;
+  content: PageBlock[];
+  memberId: string;
+  memberName: string;
+};
+
+export async function createPage(db: SupabaseRestClient, input: CreatePageInput): Promise<Page> {
+  const rows = await db.insert<Page>("pages", {
+    parent_id: input.parentId,
+    title: sanitizeTitle(input.title),
+    content: input.content,
+    share_token: createShareToken(),
+    created_by_member_id: input.memberId,
+    created_by_member_name: input.memberName
+  });
+  if (!rows[0]) throw new Error("Page insert returned no row");
+  return rows[0];
+}
+
+export type UpdatePageInput = {
+  title?: string;
+  content?: PageBlock[];
+  parentId?: string | null;
+  memberId: string;
+};
+
+export async function updatePage(db: SupabaseRestClient, id: string, input: UpdatePageInput): Promise<Page | null> {
+  const payload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    updated_by_member_id: input.memberId
+  };
+  if (input.title !== undefined) payload.title = sanitizeTitle(input.title);
+  if (input.content !== undefined) payload.content = input.content;
+  if (input.parentId !== undefined) payload.parent_id = input.parentId;
+
+  const rows = await db.update<Page>("pages", payload, params(eq("id", id)));
+  return rows[0] ?? null;
+}
+
+export async function deletePage(db: SupabaseRestClient, id: string): Promise<void> {
+  await db.delete("pages", params(eq("id", id)));
+}
+
+/**
+ * True when moving `pageId` under `parentId` would create a cycle, i.e. the new
+ * parent is the page itself or one of its descendants. Walk up from the target
+ * parent; if we reach the page, the move is illegal.
+ */
+export async function wouldCreateCycle(
+  db: SupabaseRestClient,
+  pageId: string,
+  parentId: string
+): Promise<boolean> {
+  if (pageId === parentId) return true;
+
+  const pages = await listPages(db);
+  const parentOf = new Map(pages.map((page) => [page.id, page.parent_id]));
+
+  let cursor: string | null = parentId;
+  const seen = new Set<string>();
+  while (cursor) {
+    if (cursor === pageId) return true;
+    if (seen.has(cursor)) return true; // pre-existing cycle; refuse rather than loop
+    seen.add(cursor);
+    cursor = parentOf.get(cursor) ?? null;
+  }
+  return false;
+}
+
+export type PageTreeNode = Page & { children: PageTreeNode[] };
+
+/** Build the parent/child tree from a flat list, preserving input order. */
+export function buildPageTree(pages: Page[]): PageTreeNode[] {
+  const nodes = new Map<string, PageTreeNode>();
+  for (const page of pages) nodes.set(page.id, { ...page, children: [] });
+
+  const roots: PageTreeNode[] = [];
+  for (const page of pages) {
+    const node = nodes.get(page.id)!;
+    const parent = page.parent_id ? nodes.get(page.parent_id) : undefined;
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  }
+  return roots;
+}
+
+/**
+ * The page plus every descendant, used when deleting so a client knows how many
+ * subpages go with it. The DB cascades on delete, so this is informational.
+ */
+export function collectDescendantIds(pages: Page[], rootId: string): string[] {
+  const childrenOf = new Map<string, string[]>();
+  for (const page of pages) {
+    if (!page.parent_id) continue;
+    const list = childrenOf.get(page.parent_id) ?? [];
+    list.push(page.id);
+    childrenOf.set(page.parent_id, list);
+  }
+
+  const ids: string[] = [];
+  const queue = [rootId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    ids.push(id);
+    queue.push(...(childrenOf.get(id) ?? []));
+  }
+  return ids;
+}

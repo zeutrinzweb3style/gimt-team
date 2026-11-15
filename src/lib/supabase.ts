@@ -151,6 +151,36 @@ export type SpamReport = {
   created_at: string;
 };
 
+/**
+ * A block inside a page's editor. Blocks nest (a toggle heading owns the blocks
+ * beneath it) so one JSON array holds the whole page body.
+ */
+export type PageBlock = {
+  id: string;
+  type: "paragraph" | "heading" | "toggle" | "subpage";
+  /** Heading level for `heading`/`toggle` blocks (1–3). */
+  level?: 1 | 2 | 3;
+  text: string;
+  collapsed?: boolean;
+  /** For `subpage` blocks: the id of the child page this block links to. */
+  pageId?: string;
+  children?: PageBlock[];
+};
+
+/** A page or nested subpage. `parent_id === null` means a top-level main page. */
+export type Page = {
+  id: string;
+  parent_id: string | null;
+  title: string;
+  content: PageBlock[];
+  share_token: string;
+  created_by_member_id: string;
+  created_by_member_name: string;
+  created_at: string;
+  updated_at: string;
+  updated_by_member_id: string | null;
+};
+
 export type SavedCommand = {
   id: string;
   owner_telegram_user_id: number;

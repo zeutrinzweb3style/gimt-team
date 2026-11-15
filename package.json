@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:test": "tsc --outDir .test-build --noEmit false --declaration false",
+    "test": "npm run build:test && node --test tests/*.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.14.8",

@@ -42,6 +42,7 @@ function showIdentity(name) {
   identity.classList.remove("hidden");
   identity.classList.add("inline-flex");
   nameEl.textContent = `✅ Connected as ${name}`;
+  emitIdentity(name);
 }
 
 function showLogin() {
@@ -51,6 +52,24 @@ function showLogin() {
   identity.classList.add("hidden");
   identity.classList.remove("inline-flex");
   loginBtn.classList.remove("hidden");
+  emitIdentity(null);
+}
+
+/** Subscribers hear about identity changes; `null` means signed out. */
+const identityListeners = new Set();
+
+export function onIdentityChange(listener) {
+  identityListeners.add(listener);
+}
+
+function emitIdentity(name) {
+  for (const listener of identityListeners) {
+    try {
+      listener(name);
+    } catch (_error) {
+      // A failing listener must not break the login flow.
+    }
+  }
 }
 
 async function loadSession() {

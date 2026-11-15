@@ -1,6 +1,19 @@
 import { TEAM_SCHEDULE } from "../../src/lib/team-schedule.js";
 import { findRegistrationByUser, getMemberProfile, listMemberProfiles, listRegistrations } from "../../src/lib/repository.js";
-import { getSupabase } from "../../src/lib/supabase.js";
+import {
+  buildPageTree,
+  collectDescendantIds,
+  createPage,
+  deletePage,
+  getPageById,
+  getPageByShareToken,
+  isValidShareToken,
+  listPages,
+  sanitizeBlocks,
+  updatePage,
+  wouldCreateCycle
+} from "../../src/lib/pages.js";
+import { getSupabase, type PageBlock } from "../../src/lib/supabase.js";
 import {
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
@@ -8,7 +21,8 @@ import {
   getBotToken,
   getSessionSecret,
   readSessionCookie,
-  verifyInitData
+  verifyInitData,
+  type Session
 } from "../../src/lib/telegram-auth.js";
 
 function sendJson(response: any, statusCode: number, payload: unknown) {
@@ -110,11 +124,193 @@ async function handleAuth(request: any, response: any, mode: string): Promise<bo
   return false;
 }
 
+/** The signed session, or null when the request has no valid login. */
+async function readSession(request: any): Promise<Session | null> {
+  const secret = getSessionSecret();
+  if (!secret) return null;
+  return readSessionCookie(readCookie(request, SESSION_COOKIE), secret);
+}
+
+/**
+ * Pages API, hosted here to stay within Vercel Hobby's 12-function limit.
+ *
+ * Reads of a shared page are public and keyed by the page's unguessable
+ * `share_token` (an unlisted link). Everything else — listing the tree, creating,
+ * renaming, saving, moving, deleting — requires a valid Telegram login, and only
+ * the member who created a page may change or delete it.
+ */
+async function handlePages(request: any, response: any, url: URL): Promise<void> {
+  const action = url.searchParams.get("action") || "list";
+  const db = getSupabase();
+
+  // Public: one page by share token. No login required so a shared link opens.
+  if (action === "shared") {
+    const token = url.searchParams.get("token") || "";
+    if (!isValidShareToken(token)) {
+      sendJson(response, 400, { ok: false, error: "Invalid share token." });
+      return;
+    }
+    const page = await getPageByShareToken(db, token);
+    if (!page) {
+      sendJson(response, 404, { ok: false, error: "Page not found." });
+      return;
+    }
+    const all = await listPages(db);
+    const breadcrumb = buildBreadcrumb(all, page.id);
+    const linkedIds = collectSubpageIds(page.content);
+    const linkedPages = all
+      .filter((candidate) => linkedIds.has(candidate.id))
+      .map((candidate) => ({ id: candidate.id, title: candidate.title }));
+    sendJson(response, 200, { ok: true, page, breadcrumb, linkedPages });
+    return;
+  }
+
+  const session = await readSession(request);
+  if (!session) {
+    sendJson(response, 401, { ok: false, error: "Sign in with Telegram to view team pages." });
+    return;
+  }
+
+  if (action === "list") {
+    const pages = await listPages(db);
+    sendJson(response, 200, { ok: true, tree: buildPageTree(pages), pages });
+    return;
+  }
+
+  if (action === "get") {
+    const id = url.searchParams.get("id") || "";
+    const page = await getPageById(db, id);
+    if (!page) {
+      sendJson(response, 404, { ok: false, error: "Page not found." });
+      return;
+    }
+    sendJson(response, 200, { ok: true, page });
+    return;
+  }
+
+  if (action === "create") {
+    const body = await readJsonBody(request);
+    if (!body) {
+      sendJson(response, 400, { ok: false, error: "Expected a JSON body." });
+      return;
+    }
+    const parentId = typeof body.parentId === "string" && body.parentId ? body.parentId : null;
+    if (parentId) {
+      const parent = await getPageById(db, parentId);
+      if (!parent) {
+        sendJson(response, 404, { ok: false, error: "Parent page not found." });
+        return;
+      }
+    }
+    const page = await createPage(db, {
+      parentId,
+      title: typeof body.title === "string" ? body.title : "",
+      content: sanitizeBlocks(body.content),
+      memberId: session.memberId,
+      memberName: session.memberName
+    });
+    sendJson(response, 201, { ok: true, page });
+    return;
+  }
+
+  if (action === "update") {
+    const id = url.searchParams.get("id") || "";
+    const page = await getPageById(db, id);
+    if (!page) {
+      sendJson(response, 404, { ok: false, error: "Page not found." });
+      return;
+    }
+    if (page.created_by_member_id !== session.memberId) {
+      sendJson(response, 403, { ok: false, error: "Only the member who created this page can edit it." });
+      return;
+    }
+    const body = await readJsonBody(request);
+    if (!body) {
+      sendJson(response, 400, { ok: false, error: "Expected a JSON body." });
+      return;
+    }
+
+    let parentId: string | null | undefined;
+    if (typeof body.parentId === "string" || body.parentId === null) {
+      parentId = body.parentId === null || body.parentId === "" ? null : String(body.parentId);
+      if (parentId && (await wouldCreateCycle(db, id, parentId))) {
+        sendJson(response, 400, { ok: false, error: "A page cannot be moved inside itself." });
+        return;
+      }
+      if (parentId && !(await getPageById(db, parentId))) {
+        sendJson(response, 404, { ok: false, error: "Parent page not found." });
+        return;
+      }
+    }
+
+    const updated = await updatePage(db, id, {
+      title: typeof body.title === "string" ? body.title : undefined,
+      content: body.content === undefined ? undefined : sanitizeBlocks(body.content),
+      parentId,
+      memberId: session.memberId
+    });
+    sendJson(response, 200, { ok: true, page: updated });
+    return;
+  }
+
+  if (action === "delete") {
+    const id = url.searchParams.get("id") || "";
+    const page = await getPageById(db, id);
+    if (!page) {
+      sendJson(response, 404, { ok: false, error: "Page not found." });
+      return;
+    }
+    if (page.created_by_member_id !== session.memberId) {
+      sendJson(response, 403, { ok: false, error: "Only the member who created this page can delete it." });
+      return;
+    }
+    const all = await listPages(db);
+    const removed = collectDescendantIds(all, id);
+    await deletePage(db, id);
+    sendJson(response, 200, { ok: true, deleted: removed.length });
+    return;
+  }
+
+  sendJson(response, 400, { ok: false, error: `Unknown pages action: ${action}` });
+}
+
+/** The chain of ancestors for a page, outermost first, for a shared-page header. */
+function buildBreadcrumb(pages: { id: string; parent_id: string | null; title: string }[], pageId: string) {
+  const byId = new Map(pages.map((page) => [page.id, page]));
+  const chain: { id: string; title: string }[] = [];
+  let cursor = byId.get(pageId);
+  const seen = new Set<string>();
+  while (cursor && !seen.has(cursor.id)) {
+    seen.add(cursor.id);
+    chain.unshift({ id: cursor.id, title: cursor.title });
+    cursor = cursor.parent_id ? byId.get(cursor.parent_id) : undefined;
+  }
+  return chain;
+}
+
+/** Ids referenced by `subpage` blocks anywhere in a page's block tree. */
+function collectSubpageIds(blocks: PageBlock[]): Set<string> {
+  const ids = new Set<string>();
+  const visit = (list: PageBlock[]) => {
+    for (const block of list) {
+      if (block.type === "subpage" && block.pageId) ids.add(block.pageId);
+      if (block.children?.length) visit(block.children);
+    }
+  };
+  visit(blocks);
+  return ids;
+}
+
 // Profile lookup lives here (rather than its own function) to stay within the
 // Vercel Hobby plan limit of 12 serverless functions.
 export default async function handler(request: any, response: any) {
   try {
     const url = new URL(request.url ?? "/", "https://example.com");
+
+    if (url.searchParams.get("resource") === "pages") {
+      await handlePages(request, response, url);
+      return;
+    }
 
     const authMode = url.searchParams.get("auth");
     if (authMode === "me" || authMode === "logout" || authMode === "login") {

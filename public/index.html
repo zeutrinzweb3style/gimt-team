@@ -64,6 +64,7 @@
         <button class="tab-btn" role="tab" aria-selected="false" data-tab="proof">Proof of Work</button>
         <button class="tab-btn" role="tab" aria-selected="false" data-tab="tickets">Support Tickets</button>
         <button class="tab-btn" role="tab" aria-selected="false" data-tab="ticket-search">Ticket Search</button>
+        <button class="tab-btn hidden" role="tab" aria-selected="false" data-tab="pages" id="pages-tab-btn">Pages</button>
         <button class="tab-btn hidden" role="tab" aria-selected="false" data-tab="member" id="member-tab-btn">Member Profile</button>
       </nav>
     </header>
@@ -104,6 +105,7 @@
             <h3 class="text-xl font-bold text-slate-950 dark:text-white">Team Directory</h3>
             <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Choose a member to review their Proof of Work submissions.</p>
             <p class="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Default range: last 7 days · customize from the profile</p>
+            <button type="button" id="home-pages-btn" class="home-pages-btn hidden">📄 Open Pages</button>
           </div>
           <div id="home-members-grid" class="home-members-grid">
             <p class="text-sm text-slate-500 dark:text-slate-400">Loading team members…</p>
@@ -497,7 +499,32 @@
       </section>
 
 
-      <footer class="mt-10 text-center text-xs text-slate-500 dark:text-slate-400">
+        <!-- Hierarchical pages: Notion-style tree, editor, nested subpages. -->
+        <section data-tab-panel="pages" class="pages-page">
+          <div class="pg-layout">
+            <aside class="pg-sidebar" id="pages-sidebar">
+              <div class="pg-sidebar-head">
+                <h2>Pages</h2>
+                <div class="pg-sidebar-head-actions">
+                  <button type="button" id="pages-back-home" class="pg-btn">← Home</button>
+                  <button type="button" id="pages-new-root" class="pg-btn pg-btn-primary">＋ New page</button>
+                </div>
+              </div>
+              <div id="pages-sidebar-tree" class="pg-sidebar-tree">
+                <p class="pg-sidebar-empty">Loading pages…</p>
+              </div>
+              <p class="pg-sidebar-note">Every team member can see all pages. Only the member who created a page can edit it.</p>
+            </aside>
+            <div id="pages-editor" class="pg-editor"></div>
+          </div>
+        </section>
+
+        <!-- Shared page: reached by its own unlisted link (?page=<token>). -->
+        <section data-tab-panel="pages-shared" class="section-card p-4 sm:p-6">
+          <div id="pages-shared"><p class="text-sm text-slate-500 dark:text-slate-400">Loading shared page…</p></div>
+        </section>
+
+        <footer class="mt-10 text-center text-xs text-slate-500 dark:text-slate-400">
         Read-only public dashboard. Actions are performed in the Telegram bot.
       </footer>
     </main>
