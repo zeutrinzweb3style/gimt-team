@@ -5,6 +5,7 @@
 // (?page=<token>), which the server resolves without a session.
 
 import { state } from "./state.js";
+import { PROTECTED_ATTR, initContentProtection } from "./content-protection.js";
 import { renderInlineMarkdown, renderMarkdown } from "./markdown.js";
 import { $, $all, copyTextToButton, debounce, escapeHtml, fetchJson, postJson, safeImageUrl } from "./utils.js";
 
@@ -1046,6 +1047,9 @@ export function initPages() {
   pagesState().expanded = pagesState().expanded || new Set();
   initSidebarEvents();
   initEditorEvents();
+  // Published content is locked down globally: the shared page view is the only
+  // surface marked with the protected attribute, so the editor is unaffected.
+  initContentProtection();
   // Best-effort save if the tab is closed mid-edit.
   window.addEventListener("beforeunload", () => { flushPendingSave(); });
 }
@@ -1077,7 +1081,7 @@ export function renderSharedPage() {
     ? `<button type="button" class="pg-shared-back" id="pg-shared-back">← Back</button>`
     : "";
   container.innerHTML = `
-    <article class="pg-shared-card">
+    <article class="pg-shared-card" ${PROTECTED_ATTR}="true">
       ${back}
       ${trail}
       <h2 class="pg-shared-title">${escapeHtml(page.title || "Untitled")}</h2>

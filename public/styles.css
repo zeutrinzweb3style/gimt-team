@@ -1806,6 +1806,35 @@ textarea.pg-image-caption:focus { background: rgb(248 250 252); border-radius: 6
 .pg-shared-meta { margin-top: 6px; font-size: 12px; color: rgb(100 116 139); }
 .pg-shared-card .pg-blocks { margin-top: 18px; }
 
+/* Globally enforced content protection on published pages. The attribute marks
+   the standalone shared view; the editor is never marked, so a creator keeps
+   full selection, copy, paste and drag. The rules below are the visual half of
+   the deterrent (no selection highlight, no drag ghost) and leave the original
+   layout, responsiveness and links untouched. */
+[data-content-protected] {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+/* Chrome renders a drag ghost from an image; keep the picture visible but not
+   draggable, so a published figure cannot be pulled onto the desktop. */
+[data-content-protected] img {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+/* Links and controls stay usable inside a protected page: they keep selection
+   and the normal pointer, so navigation and open-in-new-tab are unaffected. */
+[data-content-protected] a,
+[data-content-protected] button,
+[data-content-protected] input,
+[data-content-protected] textarea,
+[data-content-protected] select {
+  -webkit-user-select: auto;
+  user-select: auto;
+  -webkit-user-drag: auto;
+  user-drag: auto;
+}
+
 /* The shared page is the one panel a visitor sees on its own, so give the
    hosting card the same accent rail as the directory and the sidebar. It is a
    background layer rather than an overflowing pseudo element so the panel does

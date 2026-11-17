@@ -295,6 +295,20 @@ dashboard archive. Both only appear once the member is authenticated.
   Uploads are downscaled in the browser and stored in the `page-images` bucket
   through the same storage driver as proof-of-work photos, so the image stays
   put across refreshes and can be opened from a share link.
+- **Content protection on published pages.** A published page (the standalone
+  shared view, `/?page=<token>`) is locked down by default: text selection, copy
+  and cut, the right-click menu and dragging are all cancelled, and the whole
+  card is marked `data-content-protected` so every block — paragraphs, headings,
+  tables, lists, images, captions — is covered at once. There is **no toggle**;
+  it is part of how a published page renders, so existing and newly published
+  pages get it alike. Protection is deliberately scoped to published content:
+  the editor and the creation UI are never marked, so a creator keeps full
+  selection, copy, paste and drag, and links and controls inside a page (the
+  **← Back** control, subpage links, breadcrumbs) keep working. It is a
+  deterrent, not a guarantee: it does not defeat screenshots, OCR, View Source,
+  devtools, JavaScript being disabled, or a direct request to the page API.
+  The module lives in
+  [`public/app/content-protection.js`](public/app/content-protection.js).
 
 ### Pages API
 
