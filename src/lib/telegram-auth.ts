@@ -29,9 +29,11 @@ export type VerifiedInitData = {
 };
 
 export type Session = {
-  telegramUserId: number;
+  /** Absent for Google sign-in, which has no Telegram identity. */
+  telegramUserId?: number;
   memberId: string;
   memberName: string;
+  provider?: "telegram" | "google";
   exp: number;
 };
 
@@ -100,14 +102,15 @@ export async function verifyInitData(initData: string, botToken: string, now = n
   return { user, authDate };
 }
 
-/** The cookie value is `payload.signature`; both parts are base64url encoded. */
-export async function createSessionCookie(session: Session, secret: string): Promise<string> {
-  const payload = base64UrlEncode(JSON.stringify(session));
+/** Signs `value` as `base64url(payload).base64url(hmac)` for cookie transport. */
+export async function signValue(value: string, secret: string): Promise<string> {
+  const payload = base64UrlEncode(value);
   const signature = base64UrlEncodeBytes(new Uint8Array(await hmacSha256(encoder.encode(secret), payload)));
   return `${payload}.${signature}`;
 }
 
-export async function readSessionCookie(value: string | undefined, secret: string): Promise<Session | null> {
+/** The original value, or null when the signature does not match. */
+export async function unsignValue(value: string | undefined, secret: string): Promise<string | null> {
   if (!value) return null;
 
   const [payload, signature] = value.split(".");
@@ -117,9 +120,28 @@ export async function readSessionCookie(value: string | undefined, secret: strin
   if (!constantTimeEqual(expected, signature)) return null;
 
   try {
-    const session = JSON.parse(base64UrlDecode(payload)) as Session;
-    if (!session || !Number.isSafeInteger(session.telegramUserId)) return null;
-    if (session.exp <= Math.floor(Date.now() / 1000)) return null;
+    return base64UrlDecode(payload);
+  } catch {
+    return null;
+  }
+}
+
+/** The cookie value is `payload.signature`; both parts are base64url encoded. */
+export async function createSessionCookie(session: Session, secret: string): Promise<string> {
+  return signValue(JSON.stringify(session), secret);
+}
+
+export async function readSessionCookie(value: string | undefined, secret: string): Promise<Session | null> {
+  const raw = await unsignValue(value, secret);
+  if (!raw) return null;
+
+  try {
+    const session = JSON.parse(raw) as Session;
+    if (!session || typeof session.memberId !== "string" || !session.memberId) return null;
+    if (typeof session.memberName !== "string") return null;
+    if (session.telegramUserId !== undefined && !Number.isSafeInteger(session.telegramUserId)) return null;
+    if (session.provider !== undefined && session.provider !== "telegram" && session.provider !== "google") return null;
+    if (!Number.isFinite(session.exp) || session.exp <= Math.floor(Date.now() / 1000)) return null;
     return session;
   } catch {
     return null;

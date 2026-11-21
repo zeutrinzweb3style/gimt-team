@@ -14,6 +14,17 @@ create table if not exists public.team_registrations (
   updated_at timestamptz not null default now()
 );
 
+-- Google sign-in resolves a verified Google account to a member by email. The
+-- column is nullable and starts empty, so enabling Google login does not open
+-- the dashboard to every Google account: only members an admin has linked can
+-- sign in. The unique index is on lower(email) so a member cannot be claimed
+-- twice by casing variants.
+alter table public.team_registrations add column if not exists email text;
+
+create unique index if not exists team_registrations_email_key
+  on public.team_registrations (lower(email))
+  where email is not null;
+
 create table if not exists public.time_logs (
   id uuid primary key default gen_random_uuid(),
   member_id text not null,

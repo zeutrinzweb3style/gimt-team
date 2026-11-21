@@ -1,4 +1,4 @@
-import { eq, gte, inList, isNull, limit, lte, order, params, type ActivityLog, type AppSetting, type ConversationState, type GroupActionMessage, type GroupActionType, type GroupMessageStat, type MemberProfile, type ProofOfWorkReminder, type ProofOfWorkSubmission, type Registration, type SavedCommand, type ShiftRequest, type SpamReport, type SupportTicket, type SupportTicketEvent, type SupportTicketMessage, type SupportTicketStatus, type SupabaseRestClient, type SupportTicketAttachment, type TeamInboxDm, type TelegramGroup, type TimeLog } from "./supabase.js";
+import { eq, gte, ilike, inList, isNull, limit, lte, order, params, type ActivityLog, type AppSetting, type ConversationState, type GroupActionMessage, type GroupActionType, type GroupMessageStat, type MemberProfile, type ProofOfWorkReminder, type ProofOfWorkSubmission, type Registration, type SavedCommand, type ShiftRequest, type SpamReport, type SupportTicket, type SupportTicketEvent, type SupportTicketMessage, type SupportTicketStatus, type SupabaseRestClient, type SupportTicketAttachment, type TeamInboxDm, type TelegramGroup, type TimeLog } from "./supabase.js";
 import type { TelegramUser } from "./telegram-types.js";
 import type { TeamMember } from "./team-schedule.js";
 
@@ -42,6 +42,19 @@ export async function upsertRegistration(
 
 export async function findRegistrationByUser(db: SupabaseRestClient, telegramUserId: number): Promise<Registration | null> {
   const rows = await db.select<Registration>("team_registrations", params(eq("telegram_user_id", telegramUserId), limit(1)));
+  return rows[0] ?? null;
+}
+
+/**
+ * Resolves a Google account to a member. `ilike` with no wildcards is a
+ * case-insensitive equality, so an address typed as John@Gmail.com in the
+ * dashboard still matches the lowercased address Supabase returns.
+ */
+export async function findRegistrationByEmail(db: SupabaseRestClient, email: string): Promise<Registration | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const rows = await db.select<Registration>("team_registrations", params(ilike("email", normalized), limit(1)));
   return rows[0] ?? null;
 }
 

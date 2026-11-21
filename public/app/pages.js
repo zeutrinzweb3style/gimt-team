@@ -1,6 +1,6 @@
 // Hierarchical pages: a Notion-style tree of pages and nested subpages.
 //
-// Editing needs a Telegram login and is limited to the member who created the
+// Editing needs a login and is limited to the member who created the
 // page. A single page can also be opened by anyone holding its share link
 // (?page=<token>), which the server resolves without a session.
 

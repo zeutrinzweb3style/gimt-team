@@ -3,7 +3,7 @@
 
 
 import { renderActivity } from "./activity.js";
-import { initTelegramAuth, onIdentityChange } from "./auth.js";
+import { initAuth, onIdentityChange } from "./auth.js";
 import { loadCommunitySummary } from "./community-summary.js";
 import { loadIssueCategories, normalizeIssueCategory } from "./issue-categories.js";
 import { defaultIssueRange, getIssueUrlParams, loadIssueReport, openIssueReport, updateIssueUrlParams } from "./issue-report.js";
@@ -23,19 +23,19 @@ export async function init() {
   initDefaultDates();
   initPages();
   // The Pages tab only makes sense for a signed-in member; it appears and
-  // disappears with the Telegram login.
+  // disappears with the login.
   const pagesTab = $("#pages-tab-btn");
   const homePagesBtn = $("#home-pages-btn");
   onIdentityChange((name) => {
     pagesTab?.classList.toggle("hidden", !name);
     homePagesBtn?.classList.toggle("hidden", !name);
     if (!name && state.currentTab === "pages") switchTab("home");
-    // Opening Pages before the Telegram login lands fails with 401, and nothing
+    // Opening Pages before the login lands fails with 401, and nothing
     // used to retry, so the sidebar stayed on its error until another action.
     // Reload once the session arrives.
     if (name && !state.pages.loaded) loadPages().catch(() => {});
   });
-  initTelegramAuth();
+  initAuth();
   $("#activity-member").setAttribute("data-members-select", "1");
   $("#proof-member").setAttribute("data-members-select", "1");
   $("#tickets-assigned-member").setAttribute("data-members-select", "1");

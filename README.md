@@ -20,7 +20,7 @@ For the Mini App to open on Telegram Web and Desktop, the domain must be registe
 
 ### Telegram login (identity only)
 
-The dashboard header shows a **Log in with Telegram** button, but only when the page is opened as a Telegram Mini App — that is, from a bot button that uses `web_app`. In a normal browser `window.Telegram.WebApp.initData` is empty, so the button never appears. The WebApp SDK is loaded on demand (from `auth.js`) rather than from a script tag, so a slow or unreachable `telegram.org` cannot delay the dashboard.
+The dashboard header shows a **Log in with Telegram** button, but only when the page is opened as a Telegram Mini App — that is, from a bot button that uses `web_app`. In a normal browser `window.Telegram.WebApp.initData` is empty, so that button is hidden and the **Continue with Google** button is shown instead (see [Google login](#google-login-optional)). The WebApp SDK is loaded on demand (from `auth.js`) rather than from a script tag, so a slow or unreachable `telegram.org` cannot delay the dashboard.
 
 Clicking it sends `initData` to `/api/web/members?auth=login`, which:
 
@@ -31,11 +31,46 @@ Clicking it sends `initData` to `/api/web/members?auth=login`, which:
 
 The cookie is `SameSite=None; Secure` on HTTPS hosts. Telegram Web and Desktop render the Mini App inside a cross-site iframe, and a `Lax` cookie is not sent there, so login would appear to succeed and every later call would return 401. Because a `None` cookie also travels on cross-site requests, mutating calls (anything but GET/HEAD/OPTIONS) are refused with 403 when their `Origin` does not match the request host.
 
-`GET /api/web/members?auth=me` returns the connected member, and `POST /api/web/members?auth=logout` clears the cookie. Everything is served from the existing members function, so Vercel stays at 12 functions.
+`GET /api/web/members?auth=me` returns the connected member and the provider that authenticated them (`telegram` or `google`), and `POST /api/web/members?auth=logout` clears the cookie. Everything is served from the existing members function, so Vercel stays at 12 functions.
 
 This is **identity only**: it proves which member is viewing the dashboard. It does not change the public read access of the data, and it is not a substitute for protecting the dashboard.
 
-Optional: set `SESSION_SECRET` to sign session cookies with a key other than the bot token. If it is unset, the bot token is used.
+Optional: set `SESSION_SECRET` to sign session cookies (and the Google login's pending-login cookie) with a key other than the bot token. If it is unset, the bot token is used.
+
+### Google login (optional)
+
+Google login lets a member open the dashboard in a normal browser, without Telegram. It is off until Supabase has a Google provider configured and a member has an email linked.
+
+**1. Supabase.** Authentication → Sign In / Providers → Google: enable it and paste the Google Cloud OAuth client ID and secret. In Google Cloud, the authorized redirect URI is `https://<PROJECT_REF>.supabase.co/auth/v1/callback`. Add `https://<your-domain>/**` (and `http://localhost:3000/**` for local work) to Authentication → URL Configuration → Redirect URLs.
+
+**2. Environment.** `SUPABASE_ANON_KEY` is required for the token exchange; it falls back to `SUPABASE_SERVICE_ROLE_KEY` if unset. `SUPABASE_URL` and `SESSION_SECRET` (or the bot token) must already be present.
+
+**3. Link a member.** Only members with a matching email can sign in, so an arbitrary Google account gets no session. Add the address in the Supabase SQL editor:
+
+```sql
+update public.team_registrations set email = 'member@gmail.com' where member_id = 'betz';
+```
+
+Re-run `supabase/schema.sql` first if the `email` column does not exist yet; the statement is idempotent. Emails are matched case-insensitively through the `team_registrations_email_key` unique index on `lower(email)`.
+
+**Flow.** `GET /api/web/members?auth=google` (optionally `&next=/some/path`) mints a PKCE verifier, stores it in a signed 10-minute `HttpOnly` cookie scoped to `/api/web/members`, and redirects to Supabase's `/auth/v1/authorize?provider=google`. Supabase brokers the Google consent screen and returns to `GET /api/web/members?auth=google-callback`, which:
+
+1. reads the verifier from the signed cookie (a callback without it is refused),
+2. exchanges the code at Supabase's `/auth/v1/token?grant_type=pkce`,
+3. keeps the email only when Supabase reports it confirmed and the provider is `google`,
+4. resolves that email to a registered member, and
+5. sets the same `gimt_session` cookie the Telegram flow uses.
+
+No Google SDK and no Supabase JS client are loaded, and no token reaches the page. Failures come back as `/?auth_error=<code>`, shown by `auth.js` and then stripped from the URL:
+
+| Code | Meaning |
+|---|---|
+| `not_member` | The Google email is not linked to a registered member. |
+| `expired` | The pending login is missing or older than 10 minutes. Start again. |
+| `failed` | Supabase rejected the code, the email was unconfirmed, or the exchange failed. |
+| `unconfigured` | `SUPABASE_URL`/key missing, so Google login is not set up. |
+
+`next` is restricted to same-site paths: anything that is not a single leading `/` falls back to `/`, so the callback cannot be used as an open redirect.
 
 ## Team schedule
 
@@ -223,17 +258,19 @@ The dashboard lives in the [`public/`](public) folder and is served as a static 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/web/members` | Static team roster + registration state (used to populate the member filter). |
-| `GET /api/web/members?auth=me` | The signed-in member, or `connected: null`. |
+| `GET /api/web/members?auth=me` | The signed-in member and provider, or `connected: null`. |
+| `GET /api/web/members?auth=google` | Starts Google sign-in. Redirects to Supabase; optional `next` is a same-site path. |
+| `GET /api/web/members?auth=google-callback` | Supabase's OAuth return. Sets the session cookie, or redirects with `auth_error`. |
 | `GET /api/web/members?resource=pages&action=…` | Hierarchical pages API. See [Hierarchical pages](#hierarchical-pages). |
 | `GET /api/web/activity?member_id=&action=&limit=` | Paginated `activity_logs` rows, newest first. |
 | `GET /api/web/group-stats?member_id=&telegram_chat_id=&from=&to=&limit=` | `group_message_stats` rows enriched with Telegram group names, group list, per-member totals, and per-group totals. |
 | `GET /api/web/proof-submissions?member_id=&from=&to=&limit=` | `proof_of_work_submissions` rows, newest first. |
 
-The dashboard is mostly read-only and public. The two exceptions are Telegram
-login (`?auth=me|login|logout`) and the pages API: both require a signed session
-cookie, and the pages API additionally limits edits to the page's creator.
-Anything else sensitive should stay in Supabase row-level security or be omitted
-from these endpoints.
+The dashboard is mostly read-only and public. The exceptions are login
+(`?auth=me|login|logout` and the Google pair `?auth=google|google-callback`) and
+the pages API: both require a signed session cookie, and the pages API
+additionally limits edits to the page's creator. Anything else sensitive should
+stay in Supabase row-level security or be omitted from these endpoints.
 
 The frontend is a plain ES-module SPA. `public/index.html` loads `public/styles.css`, `public/tailwind.css` and `public/app/main.js`; the rest of the UI lives in small modules under [`public/app/`](public/app) (state, shared utils, and one module per dashboard section).
 
@@ -349,6 +386,8 @@ photo fits inside Vercel's request limit without the member doing anything.
 `tests/pages.test.mjs` exercises the real handler against a stub of the Supabase
 REST endpoints, so the login check, the creator-only rule, share tokens,
 sanitisation and the delete cascade all run as they do in production.
+`tests/google-login.test.mjs` does the same for Google sign-in, stubbing the
+Supabase Auth PKCE token endpoint and the `team_registrations` read.
 
 ```bash
 npm test        # compiles to .test-build/ and runs node --test
