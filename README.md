@@ -266,6 +266,8 @@ The dashboard lives in the [`public/`](public) folder and is served as a static 
 | `GET /api/web/group-stats?member_id=&telegram_chat_id=&from=&to=&limit=` | `group_message_stats` rows enriched with Telegram group names, group list, per-member totals, and per-group totals. |
 | `GET /api/web/proof-submissions?member_id=&from=&to=&limit=` | `proof_of_work_submissions` rows, newest first. |
 
+`/privacy.html` and `/terms.html` are static pages linked from the dashboard footer. Google requires a public privacy policy URL before it will publish the OAuth app, and the policy states how Google user data is used (Limited Use).
+
 The dashboard is mostly read-only and public. The exceptions are login
 (`?auth=me|login|logout` and the Google pair `?auth=google|google-callback`) and
 the pages API: both require a signed session cookie, and the pages API
