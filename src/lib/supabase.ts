@@ -11,6 +11,8 @@ export type Registration = {
   member_id: string;
   member_name: string;
   timezone: string;
+  /** Linked by an admin so the member can also sign in with Google. */
+  email: string | null;
   registered_at: string;
   updated_at: string;
 };
@@ -391,6 +393,15 @@ export function gte(field: string, value: string | number): [string, string] {
 
 export function inList(field: string, values: ReadonlyArray<string | number>): [string, string] {
   return [field, `in.(${values.map((v) => String(v)).join(",")})`];
+}
+
+/**
+ * Case-insensitive equality. PostgREST passes the value to SQL ILIKE, so the
+ * LIKE metacharacters in the value must be escaped to stay literal.
+ */
+export function ilike(field: string, value: string): [string, string] {
+  const escaped = value.replace(/[\\%_]/g, (char) => `\\${char}`);
+  return [field, `ilike.${escaped}`];
 }
 
 export function order(field: string, ascending = true): [string, string] {

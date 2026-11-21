@@ -1,5 +1,5 @@
 import { TEAM_SCHEDULE } from "../../src/lib/team-schedule.js";
-import { findRegistrationByUser, getMemberProfile, listMemberProfiles, listRegistrations } from "../../src/lib/repository.js";
+import { findRegistrationByEmail, findRegistrationByUser, getMemberProfile, listMemberProfiles, listRegistrations } from "../../src/lib/repository.js";
 import {
   buildPageTree,
   collectDescendantIds,
@@ -27,6 +27,16 @@ import {
   verifyInitData,
   type Session
 } from "../../src/lib/telegram-auth.js";
+import {
+  OAUTH_COOKIE,
+  OAUTH_COOKIE_PATH,
+  buildAuthorizeUrl,
+  createPendingLogin,
+  exchangeCodeForGoogleIdentity,
+  isGoogleLoginConfigured,
+  readPendingLogin,
+  sanitizeNextPath
+} from "../../src/lib/google-auth.js";
 
 function sendJson(response: any, statusCode: number, payload: unknown) {
   response.statusCode = statusCode;
@@ -66,17 +76,64 @@ function readCookie(request: any, name: string): string | undefined {
   return undefined;
 }
 
+function isHttpsDeployment(): boolean {
+  return Boolean(process.env.VERCEL || process.env.NETLIFY) || process.env.NODE_ENV === "production";
+}
+
+/**
+ * Adds one Set-Cookie header without dropping the ones already set. The Netlify
+ * adapter joins an array with ", ", so callers must not need two cookies on the
+ * same response; every flow here sets at most one.
+ */
+function appendCookie(response: any, cookie: string) {
+  const existing = response.getHeader?.("set-cookie");
+  const cookies = Array.isArray(existing) ? [...existing] : existing ? [existing] : [];
+  cookies.push(cookie);
+  response.setHeader("set-cookie", cookies.length === 1 ? cookies[0] : cookies);
+}
+
 function setSessionCookie(response: any, value: string, maxAge: number) {
-  const isHttpsHost = Boolean(process.env.VERCEL || process.env.NETLIFY) || process.env.NODE_ENV === "production";
   // Telegram Web and Desktop render the Mini App inside a cross-site iframe, and
   // a Lax cookie is not sent there, so the login would appear to succeed and then
   // every authenticated call would 401. None is what an iframe needs, and None
   // demands Secure, which only holds over HTTPS. On a plain-HTTP dev host fall
   // back to Lax, because a browser rejects None without Secure outright.
-  const sameSite = isHttpsHost ? "None" : "Lax";
+  const sameSite = isHttpsDeployment() ? "None" : "Lax";
   const parts = [`${SESSION_COOKIE}=${encodeURIComponent(value)}`, "Path=/", "HttpOnly", `SameSite=${sameSite}`, `Max-Age=${maxAge}`];
-  if (isHttpsHost) parts.push("Secure");
-  response.setHeader("set-cookie", parts.join("; "));
+  if (isHttpsDeployment()) parts.push("Secure");
+  appendCookie(response, parts.join("; "));
+}
+
+/**
+ * The pending-login cookie holds the PKCE verifier. Lax is deliberate: the
+ * callback arrives as a top-level GET navigation from Google, and a None cookie
+ * would also be sent on cross-site subrequests for no benefit.
+ */
+function setOAuthCookie(response: any, value: string, maxAge: number) {
+  const parts = [
+    `${OAUTH_COOKIE}=${encodeURIComponent(value)}`,
+    `Path=${OAUTH_COOKIE_PATH}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAge}`
+  ];
+  if (isHttpsDeployment()) parts.push("Secure");
+  appendCookie(response, parts.join("; "));
+}
+
+function redirect(response: any, location: string) {
+  response.statusCode = 302;
+  response.setHeader("location", location);
+  response.setHeader("cache-control", "no-store");
+  response.end("");
+}
+
+/** The public origin of this deployment, for the OAuth redirect_to. */
+function requestOrigin(request: any): string {
+  const host = String(request.headers?.["x-forwarded-host"] ?? request.headers?.host ?? request.headers?.Host ?? "").split(",")[0].trim();
+  if (!host) return "";
+  const proto = String(request.headers?.["x-forwarded-proto"] ?? "").split(",")[0].trim() || (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+  return `${proto}://${host}`;
 }
 
 async function readJsonBody(request: any): Promise<Record<string, unknown> | null> {
@@ -111,7 +168,9 @@ async function handleAuth(request: any, response: any, mode: string): Promise<bo
     const session = secret ? await readSessionCookie(readCookie(request, SESSION_COOKIE), secret) : null;
     sendJson(response, 200, {
       ok: true,
-      connected: session ? { member_id: session.memberId, member_name: session.memberName } : null
+      connected: session
+        ? { member_id: session.memberId, member_name: session.memberName, provider: session.provider ?? "telegram" }
+        : null
     });
     return true;
   }
@@ -143,16 +202,75 @@ async function handleAuth(request: any, response: any, mode: string): Promise<bo
         telegramUserId: verified.user.id,
         memberId: registration.member_id,
         memberName: registration.member_name,
+        provider: "telegram",
         exp
       },
       secret
     );
     setSessionCookie(response, cookie, SESSION_TTL_SECONDS);
-    sendJson(response, 200, { ok: true, connected: { member_id: registration.member_id, member_name: registration.member_name } });
+    sendJson(response, 200, { ok: true, connected: { member_id: registration.member_id, member_name: registration.member_name, provider: "telegram" } });
     return true;
   }
 
   return false;
+}
+
+/**
+ * Starts a Google login: sets the PKCE verifier cookie and hands the browser to
+ * Supabase, which brokers the Google consent screen and returns to the callback
+ * below. Kept as a redirect (not JSON) so the button can be a plain link.
+ */
+async function handleGoogleStart(request: any, response: any, url: URL): Promise<void> {
+  const secret = getSessionSecret();
+  const origin = requestOrigin(request);
+  if (!secret || !origin || !isGoogleLoginConfigured()) {
+    redirect(response, "/?auth_error=unconfigured");
+    return;
+  }
+
+  const { cookie, challenge, maxAge } = await createPendingLogin(sanitizeNextPath(url.searchParams.get("next")), secret);
+  setOAuthCookie(response, cookie, maxAge);
+  redirect(response, buildAuthorizeUrl(`${origin}/api/web/members?auth=google-callback`, challenge));
+}
+
+/**
+ * Completes the Google login. The code is useless without the verifier from the
+ * signed cookie, and the verified email must already belong to a registered
+ * member, so an arbitrary Google account cannot open the dashboard.
+ */
+async function handleGoogleCallback(request: any, response: any, url: URL): Promise<void> {
+  const secret = getSessionSecret();
+  const pending = secret ? await readPendingLogin(readCookie(request, OAUTH_COOKIE), secret) : null;
+  const code = url.searchParams.get("code") ?? "";
+
+  if (!pending) {
+    redirect(response, "/?auth_error=expired");
+    return;
+  }
+  if (!secret || !code) {
+    redirect(response, "/?auth_error=failed");
+    return;
+  }
+
+  const identity = await exchangeCodeForGoogleIdentity(code, pending.verifier);
+  if (!identity) {
+    redirect(response, "/?auth_error=failed");
+    return;
+  }
+
+  const registration = await findRegistrationByEmail(getSupabase(), identity.email);
+  if (!registration) {
+    redirect(response, "/?auth_error=not_member");
+    return;
+  }
+
+  const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
+  const cookie = await createSessionCookie(
+    { memberId: registration.member_id, memberName: registration.member_name, provider: "google", exp },
+    secret
+  );
+  setSessionCookie(response, cookie, SESSION_TTL_SECONDS);
+  redirect(response, sanitizeNextPath(pending.next));
 }
 
 /** The signed session, or null when the request has no valid login. */
@@ -167,7 +285,7 @@ async function readSession(request: any): Promise<Session | null> {
  *
  * Reads of a shared page are public and keyed by the page's unguessable
  * `share_token` (an unlisted link). Everything else — listing the tree, creating,
- * renaming, saving, moving, deleting — requires a valid Telegram login, and only
+ * renaming, saving, moving, deleting — requires a valid login, and only
  * the member who created a page may change or delete it.
  */
 async function handlePages(request: any, response: any, url: URL): Promise<void> {
@@ -204,7 +322,7 @@ async function handlePages(request: any, response: any, url: URL): Promise<void>
 
   const session = await readSession(request);
   if (!session) {
-    sendJson(response, 401, { ok: false, error: "Sign in with Telegram to view team pages." });
+    sendJson(response, 401, { ok: false, error: "Sign in to view team pages." });
     return;
   }
 
@@ -409,6 +527,14 @@ export default async function handler(request: any, response: any) {
     }
 
     const authMode = url.searchParams.get("auth");
+    if (authMode === "google") {
+      await handleGoogleStart(request, response, url);
+      return;
+    }
+    if (authMode === "google-callback") {
+      await handleGoogleCallback(request, response, url);
+      return;
+    }
     if (authMode === "me" || authMode === "logout" || authMode === "login") {
       if (await handleAuth(request, response, authMode)) return;
     }

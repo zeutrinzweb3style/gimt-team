@@ -1,14 +1,22 @@
-// Identity-only Telegram login for the dashboard.
+// Identity-only login for the dashboard: Telegram inside a Mini App, Google in
+// an ordinary browser.
 //
-// The button only appears inside a Telegram Mini App (window.Telegram.WebApp
-// with non-empty initData). Opening the site in a normal browser shows nothing,
-// and any initData is re-verified on the server with the bot token, so the
-// identity cannot be forged.
+// The Telegram button appears only inside a Mini App (window.Telegram.WebApp
+// with non-empty initData), and that initData is re-verified on the server with
+// the bot token. The Google button is a plain link to the server-side OAuth
+// start, so no Google SDK is loaded and no token ever reaches the page.
 
 import { $ } from "./utils.js";
 
 const AUTH_ENDPOINT = "/api/web/members?auth=";
 const TELEGRAM_SDK_URL = "https://telegram.org/js/telegram-web-app.js";
+
+const AUTH_ERROR_MESSAGES = {
+  not_member: "That Google account is not linked to a registered team member.",
+  expired: "That sign-in expired. Please try again.",
+  failed: "Google sign-in failed. Please try again.",
+  unconfigured: "Google sign-in is not configured on this deployment."
+};
 
 function tg() {
   return window.Telegram?.WebApp;
@@ -70,26 +78,31 @@ async function postAuth(mode, body) {
   return { ok: response.ok, status: response.status, payload };
 }
 
-function showIdentity(name) {
+let miniApp = false;
+let lastIdentity;
+
+/**
+ * Paints the header for either state. Telegram login only works inside the Mini
+ * App and Google login only works in a real browser tab, so exactly one button
+ * is offered.
+ */
+function render(state, name) {
+  const container = $("#telegram-auth");
   const loginBtn = $("#telegram-login-btn");
+  const googleBtn = $("#google-login-btn");
   const identity = $("#telegram-identity");
   const nameEl = $("#telegram-identity-name");
-  if (!loginBtn || !identity || !nameEl) return;
-  loginBtn.classList.add("hidden");
-  identity.classList.remove("hidden");
-  identity.classList.add("inline-flex");
-  nameEl.textContent = `✅ Connected as ${name}`;
-  emitIdentity(name);
-}
+  if (!container || !identity || !nameEl) return;
 
-function showLogin() {
-  const loginBtn = $("#telegram-login-btn");
-  const identity = $("#telegram-identity");
-  if (!loginBtn || !identity) return;
-  identity.classList.add("hidden");
-  identity.classList.remove("inline-flex");
-  loginBtn.classList.remove("hidden");
-  emitIdentity(null);
+  const connected = state === "connected";
+  container.classList.remove("hidden");
+  container.classList.add("flex");
+  identity.classList.toggle("hidden", !connected);
+  identity.classList.toggle("inline-flex", connected);
+  loginBtn?.classList.toggle("hidden", connected || !miniApp);
+  googleBtn?.classList.toggle("hidden", connected || miniApp);
+  if (connected) nameEl.textContent = `✅ Connected as ${name}`;
+  emitIdentity(connected ? name : null);
 }
 
 /** Subscribers hear about identity changes; `null` means signed out. */
@@ -100,6 +113,8 @@ export function onIdentityChange(listener) {
 }
 
 function emitIdentity(name) {
+  if (name === lastIdentity) return;
+  lastIdentity = name;
   for (const listener of identityListeners) {
     try {
       listener(name);
@@ -109,18 +124,16 @@ function emitIdentity(name) {
   }
 }
 
+/** The connected member's name, or null. */
 async function loadSession() {
   try {
     const response = await fetch(`${AUTH_ENDPOINT}me`, { headers: { accept: "application/json" }, credentials: "same-origin" });
     const payload = await response.json();
-    if (payload?.connected) {
-      showIdentity(payload.connected.member_name);
-      return true;
-    }
+    if (payload?.connected) return payload.connected.member_name;
   } catch (_error) {
     // Not connected or endpoint unavailable; fall through to the login button.
   }
-  return false;
+  return null;
 }
 
 async function login() {
@@ -143,7 +156,7 @@ async function login() {
 
   const { ok, payload } = await postAuth("login", { initData });
   if (ok && payload?.connected) {
-    showIdentity(payload.connected.member_name);
+    render("connected", payload.connected.member_name);
     return;
   }
 
@@ -153,30 +166,46 @@ async function login() {
 
 async function logout() {
   await postAuth("logout");
-  showLogin();
+  render("signed-out");
 }
 
-export async function initTelegramAuth() {
+/** A failed Google login comes back as ?auth_error=<code>; show it, then clean the URL. */
+function reportAuthError() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("auth_error");
+  if (!code) return;
+
+  params.delete("auth_error");
+  const query = params.toString();
+  window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+  alert(AUTH_ERROR_MESSAGES[code] || "Sign-in failed. Please try again.");
+}
+
+export async function initAuth() {
   const container = $("#telegram-auth");
   if (!container) return;
 
-  const connected = await loadSession();
-  if (connected) {
-    container.classList.remove("hidden");
-    container.classList.add("flex");
-    $("#telegram-login-btn")?.addEventListener("click", login);
-    $("#telegram-logout-btn")?.addEventListener("click", logout);
+  reportAuthError();
+
+  $("#telegram-login-btn")?.addEventListener("click", login);
+  $("#telegram-logout-btn")?.addEventListener("click", logout);
+  const googleBtn = $("#google-login-btn");
+  if (googleBtn) googleBtn.href = `${AUTH_ENDPOINT}google&next=${encodeURIComponent(window.location.pathname)}`;
+
+  const name = await loadSession();
+  if (name) {
+    render("connected", name);
     return;
   }
 
-  // No session yet. Only offer login inside the Mini App, but the SDK is loaded
-  // on demand now, so wait for it and for the init data the Telegram client
-  // hands the iframe before deciding this is an ordinary browser.
-  await loadTelegramSdk();
-  if (!(await waitForInitData())) return;
+  // Offer Google right away: an ordinary browser is the common case, and it
+  // should not wait on telegram.org. If init data shows up the page is a Mini
+  // App after all, and the buttons swap.
+  render("signed-out");
 
-  container.classList.remove("hidden");
-  container.classList.add("flex");
-  $("#telegram-login-btn")?.addEventListener("click", login);
-  $("#telegram-logout-btn")?.addEventListener("click", logout);
+  await loadTelegramSdk();
+  if (await waitForInitData()) {
+    miniApp = true;
+    render("signed-out");
+  }
 }
